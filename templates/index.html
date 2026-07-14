@@ -3,66 +3,76 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="A focused Python interface for working with a local language model.">
-  <title>Promptly — Your local AI workspace</title>
+  <meta name="description" content="Upload content and receive feedback from your local language model.">
+  <title>Promptly &mdash; Feedback workspace</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
   <main>
     <nav class="nav" aria-label="Main navigation">
-      <a class="brand" href="{{ url_for('home') }}" aria-label="Promptly home">
-        <span class="brand-mark">P</span><span>Promptly</span>
-      </a>
-      <span class="status"><i></i> Python · local mode</span>
+      <a class="brand" href="{{ url_for('home') }}" aria-label="Promptly home"><span class="brand-mark">P</span><span>Promptly</span></a>
+      <span class="status"><i></i> Python &middot; local mode</span>
     </nav>
 
     <section class="hero">
-      <div class="eyebrow"><span>✦</span> Your local AI workspace</div>
-      <h1>Ask clearly.<br><em>Get useful answers.</em></h1>
-      <p class="intro">A simple place to work with your team’s locally developed language model. Your browser talks to a Python server running on this computer.</p>
+      <div class="eyebrow"><span>&#10022;</span> Feedback, made useful</div>
+      <h1>Bring your work.<br><em>Get thoughtful feedback.</em></h1>
+      <p class="intro">Choose what you want reviewed. Promptly reads the file locally, sends its text to your team&rsquo;s model, and returns focused, actionable feedback.</p>
     </section>
 
-    <section class="workspace" aria-label="AI prompt workspace">
-      <div class="input-panel">
-        <div class="panel-heading">
-          <div><span class="step">01</span><h2>What can we help with?</h2></div>
-          <span class="limit">Maximum {{ "{:,}".format(max_prompt_length) }} characters</span>
-        </div>
-        <form method="post" action="{{ url_for('home') }}">
-          <textarea name="prompt" maxlength="{{ max_prompt_length }}" placeholder="Describe what you need, including any helpful context…" aria-label="Your prompt" rows="8" required>{{ prompt }}</textarea>
-          <div class="form-footer">
-            <span class="hint">Sent privately to your local Python server</span>
-            <button type="submit">Generate response <span aria-hidden="true">→</span></button>
+    {% if error %}<div class="notice error" role="alert"><strong>We need one change:</strong> {{ error }}</div>{% endif %}
+
+    <section class="upload-section" id="upload" aria-labelledby="upload-title">
+      <div class="section-heading">
+        <div><h2 id="upload-title">Choose what you want reviewed</h2><p>Each option uses the same secure feedback pipeline, tailored to the type of content.</p></div>
+      </div>
+
+      <div class="type-choices" aria-label="Content type choices">
+        {% for type_key, type_info in upload_types.items() %}
+          <a class="type-choice {{ type_key }}-choice{% if selected_type == type_key %} selected{% endif %}" href="{{ url_for('home', type=type_key) }}#upload"{% if selected_type == type_key %} aria-current="true"{% endif %}>
+            <span class="choice-icon" aria-hidden="true">{{ type_info.label[0] }}</span>
+            <span class="choice-copy"><strong>{{ type_info.label }}</strong><small>{{ type_info.formats }}</small></span>
+            <span class="choice-check" aria-hidden="true">{% if selected_type == type_key %}&#10003;{% else %}&rarr;{% endif %}</span>
+          </a>
+        {% endfor %}
+      </div>
+
+      {% if selected_type %}
+        {% set selected = upload_types[selected_type] %}
+        <article class="active-upload {{ selected_type }}-upload">
+          <div class="active-upload-copy">
+            <span class="file-badge">{{ selected.formats }}</span>
+            <h3>Upload your {{ selected.label|lower }}</h3>
+            <p>{{ selected.description }}</p>
           </div>
-        </form>
-      </div>
+          <form method="post" action="{{ url_for('feedback') }}" enctype="multipart/form-data">
+            <input type="hidden" name="content_type" value="{{ selected_type }}">
+            <label class="file-picker"><span>Choose a {{ selected.label|lower }}</span><input type="file" name="file" accept="{{ selected.accept }}" required></label>
+            <label class="focus-label">Optional feedback focus<input type="text" name="focus" maxlength="500" placeholder="{{ selected.focus }}"></label>
+            <button type="submit">Get {{ selected.label|lower }} feedback <span>&rarr;</span></button>
+          </form>
+        </article>
+        <p class="privacy-note">Files are processed in memory on this computer and are not saved by the website. Maximum file size: 20 MB.</p>
+      {% else %}
+        <div class="choose-prompt"><span>&uarr;</span><p>Select one of the three types to continue.</p></div>
+      {% endif %}
+    </section>
 
-      <div class="output-panel" aria-live="polite">
-        <div class="panel-heading">
-          <div><span class="step">02</span><h2>Response</h2></div>
-        </div>
-        <div class="response-body">
-          {% if error %}
-            <p class="error">{{ error }}</p>
-          {% elif output %}
-            <p class="answer">{{ output }}</p>
-          {% else %}
-            <div class="empty-state"><div class="spark">✦</div><p>Your response will appear here.</p><span>Send a prompt to get started.</span></div>
-          {% endif %}
-        </div>
+    <section class="feedback-section" aria-labelledby="feedback-title">
+      <div class="section-heading">
+        <div><h2 id="feedback-title">Model feedback</h2><p>{% if filename %}Reviewing {{ filename }}{% else %}Your feedback will appear here after an upload.{% endif %}</p></div>
+      </div>
+      <div class="feedback-panel" aria-live="polite">
+        {% if output %}
+          <div class="feedback-meta"><span>Feedback ready</span><span>{{ filename }}</span></div>
+          <p class="answer">{{ output }}</p>
+        {% else %}
+          <div class="empty-state"><div class="spark">&#10022;</div><p>Ready when you are.</p><span>Choose one of the three upload options above.</span></div>
+        {% endif %}
       </div>
     </section>
 
-    <section class="suggestions">
-      <p>Not sure where to start? Try one of these</p>
-      <div class="suggestion-grid">
-        <a href="{{ url_for('home', prompt='Summarize the key risks in launching a new product.') }}">Summarize the key risks in launching a new product.<span>↗</span></a>
-        <a href="{{ url_for('home', prompt='Turn these rough notes into a clear project update.') }}">Turn these rough notes into a clear project update.<span>↗</span></a>
-        <a href="{{ url_for('home', prompt='Explain this concept as if I am new to the topic.') }}">Explain this concept as if I am new to the topic.<span>↗</span></a>
-      </div>
-    </section>
-
-    <footer><span>Promptly</span><p>Runs locally with Python. Prompts are not stored by this website.</p></footer>
+    <footer><span>Promptly</span><p>Local Python feedback workspace. Uploaded files are not stored.</p></footer>
   </main>
 </body>
 </html>

@@ -1,6 +1,14 @@
-# Promptly — Python local AI website
+# Promptly - Python local AI feedback website
 
-Promptly is a small Python website for sending prompts to a locally running language model. The browser interface uses HTML and CSS, and all application logic runs in Python with Flask. No client-side JavaScript is used.
+Promptly is a Python website for uploading a document, transcript, or PowerPoint and receiving feedback from a locally running language model. The interface uses HTML and CSS, and all application logic runs in Python with Flask. No client-side JavaScript is used.
+
+## Supported files
+
+- Documents: `.pdf`, `.docx`, and `.txt`
+- Transcripts: `.txt`, `.srt`, `.vtt`, and `.docx`
+- PowerPoint: `.pptx`
+
+Uploads are read in memory and are not saved by the website. The maximum file size is 20 MB.
 
 ## Run it on Windows
 
@@ -30,16 +38,18 @@ The website works in demo mode without a model.
 
 ## Connect the local model
 
-Copy `.env.example` to `.env`, then set `MODEL_API_URL` to the local HTTP endpoint provided by the model team. Promptly sends:
+Copy `.env.example` to `.env`, then set `MODEL_API_URL` to the local HTTP endpoint provided by the model team.
+
+Promptly extracts the uploaded file's text, identifies its content type, includes the optional feedback focus, and sends the complete request as:
 
 ```json
-{ "prompt": "The user's input" }
+{ "prompt": "Feedback instructions followed by the extracted content" }
 ```
 
 The model service can return its answer in `output`, `response`, or `text`:
 
 ```json
-{ "output": "The model response" }
+{ "output": "The model feedback" }
 ```
 
 The model server and this website must both be running while you use the application.
