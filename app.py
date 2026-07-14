@@ -46,8 +46,25 @@ UPLOAD_TYPES = {
     },
 }
 
+MENTORS = {
+    "dr-nanshu-lu": {
+        "name": "Dr. Nanshu Lu",
+        "initials": "NL",
+        "status": "Available mentor",
+        "description": (
+            "Her specialty, thinking process, and feedback style are configured "
+            "in the local model's mentor profile."
+        ),
+    }
+}
+DEFAULT_MENTOR_ID = "dr-nanshu-lu"
 
-def call_model(prompt: str, demo_feedback: str | None = None) -> str:
+
+def call_model(
+    prompt: str,
+    demo_feedback: str | None = None,
+    mentor_id: str | None = None,
+) -> str:
     """Send a prompt to the configured model, or return local demo feedback."""
     model_url = os.getenv("MODEL_API_URL", "").strip()
     if not model_url:
@@ -62,7 +79,12 @@ def call_model(prompt: str, demo_feedback: str | None = None) -> str:
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
-    response = requests.post(model_url, json={"prompt": prompt}, headers=headers, timeout=60)
+    payload = {"prompt": prompt}
+    if mentor_id in MENTORS:
+        payload["mentor_id"] = mentor_id
+        payload["mentor_name"] = MENTORS[mentor_id]["name"]
+
+    response = requests.post(model_url, json=payload, headers=headers, timeout=60)
     response.raise_for_status()
     data: dict[str, Any] = response.json()
     for field in ("output", "response", "text"):
@@ -138,10 +160,19 @@ def extract_text(file_bytes: bytes, extension: str) -> str:
     return text[:MAX_EXTRACTED_TEXT]
 
 
-def build_feedback_prompt(kind: str, filename: str, content: str, focus: str) -> str:
+def build_feedback_prompt(
+    kind: str,
+    filename: str,
+    content: str,
+    focus: str,
+    mentor_id: str,
+) -> str:
     label = UPLOAD_TYPES[kind]["label"]
+    mentor_name = MENTORS[mentor_id]["name"]
     focus_instruction = focus or "Provide comprehensive feedback."
     return (
+        f"Use the configured mentor profile for {mentor_name}. Apply that mentor's "
+        "specialty, thinking process, and feedback style.\n"
         f"Provide clear, constructive, and actionable feedback on this {label.lower()}.\n"
         f"File name: {filename}\nRequested focus: {focus_instruction}\n\n"
         "Organize the feedback into strengths, improvements, and recommended next steps.\n\n"
@@ -150,9 +181,20 @@ def build_feedback_prompt(kind: str, filename: str, content: str, focus: str) ->
 
 
 def render_home(**context: Any):
-    defaults = {"output": "", "error": "", "filename": "", "selected_type": ""}
+    defaults = {
+        "output": "",
+        "error": "",
+        "filename": "",
+        "selected_type": "",
+        "selected_mentor": DEFAULT_MENTOR_ID,
+    }
     defaults.update(context)
-    return render_template("index.html", upload_types=UPLOAD_TYPES, **defaults)
+    return render_template(
+        "index.html",
+        upload_types=UPLOAD_TYPES,
+        mentors=MENTORS,
+        **defaults,
+    )
 
 
 @app.get("/")
@@ -160,17 +202,23 @@ def home():
     selected_type = request.args.get("type", "").strip().lower()
     if selected_type not in UPLOAD_TYPES:
         selected_type = ""
-    return render_home(selected_type=selected_type)
+    selected_mentor = request.args.get("mentor", DEFAULT_MENTOR_ID).strip().lower()
+    if selected_mentor not in MENTORS:
+        selected_mentor = DEFAULT_MENTOR_ID
+    return render_home(selected_type=selected_type, selected_mentor=selected_mentor)
 
 
 @app.post("/feedback")
 def feedback():
     kind = request.form.get("content_type", "").strip().lower()
+    mentor_id = request.form.get("mentor_id", DEFAULT_MENTOR_ID).strip().lower()
     focus = request.form.get("focus", "").strip()[:500]
     uploaded_file = request.files.get("file")
 
     if kind not in UPLOAD_TYPES:
         return render_home(error="Please choose an upload type."), 400
+    if mentor_id not in MENTORS:
+        return render_home(error="Please choose an available mentor.", selected_type=kind), 400
     if not uploaded_file or not uploaded_file.filename:
         return render_home(error="Please choose a file.", selected_type=kind), 400
 
@@ -186,19 +234,29 @@ def feedback():
 
     try:
         content = extract_text(uploaded_file.read(), extension)
-        prompt = build_feedback_prompt(kind, filename, content, focus)
+        prompt = build_feedback_prompt(kind, filename, content, focus, mentor_id)
         demo_feedback = (
-            f"Demo feedback for {filename}\n\n"
+            f"Demo feedback from {MENTORS[mentor_id]['name']} for {filename}\n\n"
             f"Your {UPLOAD_TYPES[kind]['label'].lower()} was uploaded and read successfully "
             f"({len(content):,} characters extracted). Connect MODEL_API_URL to replace this "
             "message with feedback from your team's model."
         )
-        output = call_model(prompt, demo_feedback)
-        return render_home(output=output, filename=filename, selected_type=kind)
+        output = call_model(prompt, demo_feedback, mentor_id)
+        return render_home(
+            output=output,
+            filename=filename,
+            selected_type=kind,
+            selected_mentor=mentor_id,
+        )
     except (OSError, ValueError, requests.RequestException) as exc:
         app.logger.exception("Feedback generation failed: %s", exc)
         message = str(exc) if isinstance(exc, ValueError) else "We couldn't reach the model. Check that it is running."
-        return render_home(error=message, filename=filename, selected_type=kind), 422
+        return render_home(
+            error=message,
+            filename=filename,
+            selected_type=kind,
+            selected_mentor=mentor_id,
+        ), 422
 
 
 @app.errorhandler(413)
@@ -215,8 +273,12 @@ def api_generate():
         return jsonify({"error": "Please enter a prompt."}), 400
     if len(prompt) > MAX_PROMPT_LENGTH:
         return jsonify({"error": "Prompt must be 4,000 characters or fewer."}), 400
+    mentor_id = body.get("mentor_id", DEFAULT_MENTOR_ID)
+    mentor_id = mentor_id.strip().lower() if isinstance(mentor_id, str) else ""
+    if mentor_id not in MENTORS:
+        return jsonify({"error": "Please choose an available mentor."}), 400
     try:
-        return jsonify({"output": call_model(prompt)})
+        return jsonify({"output": call_model(prompt, mentor_id=mentor_id)})
     except (requests.RequestException, ValueError) as exc:
         app.logger.exception("Model request failed: %s", exc)
         return jsonify({"error": "We couldn't reach the model."}), 502

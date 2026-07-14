@@ -29,13 +29,33 @@
 
       <div class="type-choices" aria-label="Content type choices">
         {% for type_key, type_info in upload_types.items() %}
-          <a class="type-choice {{ type_key }}-choice{% if selected_type == type_key %} selected{% endif %}" href="{{ url_for('home', type=type_key) }}#upload"{% if selected_type == type_key %} aria-current="true"{% endif %}>
+          <a class="type-choice {{ type_key }}-choice{% if selected_type == type_key %} selected{% endif %}" href="{{ url_for('home', type=type_key, mentor=selected_mentor) }}#upload"{% if selected_type == type_key %} aria-current="true"{% endif %}>
             <span class="choice-icon" aria-hidden="true">{{ type_info.label[0] }}</span>
             <span class="choice-copy"><strong>{{ type_info.label }}</strong><small>{{ type_info.formats }}</small></span>
             <span class="choice-check" aria-hidden="true">{% if selected_type == type_key %}&#10003;{% else %}&rarr;{% endif %}</span>
           </a>
         {% endfor %}
       </div>
+
+      <section class="mentor-section" id="mentor" aria-labelledby="mentor-title">
+        <div class="mentor-heading">
+          <div><h2 id="mentor-title">Choose your mentor</h2><p>Each mentor brings a distinct specialty, thinking process, and feedback style.</p></div>
+          <span class="mentor-count">{{ mentors|length }} available</span>
+        </div>
+        <div class="mentor-grid" role="radiogroup" aria-label="Available feedback mentors">
+          {% for mentor_id, mentor in mentors.items() %}
+            <a class="mentor-card{% if selected_mentor == mentor_id %} selected{% endif %}" href="{{ url_for('home', type=selected_type, mentor=mentor_id) }}#mentor" role="radio" aria-checked="{% if selected_mentor == mentor_id %}true{% else %}false{% endif %}">
+              <span class="mentor-avatar" aria-hidden="true">{{ mentor.initials }}</span>
+              <span class="mentor-copy">
+                <span class="mentor-status"><i></i>{{ mentor.status }}</span>
+                <strong>{{ mentor.name }}</strong>
+                <small>{{ mentor.description }}</small>
+              </span>
+              <span class="mentor-selected" aria-hidden="true">&#10003;</span>
+            </a>
+          {% endfor %}
+        </div>
+      </section>
 
       {% if selected_type %}
         {% set selected = upload_types[selected_type] %}
@@ -47,6 +67,7 @@
           </div>
           <form method="post" action="{{ url_for('feedback') }}" enctype="multipart/form-data">
             <input type="hidden" name="content_type" value="{{ selected_type }}">
+            <input type="hidden" name="mentor_id" value="{{ selected_mentor }}">
             <label class="file-picker"><span>Choose a {{ selected.label|lower }}</span><input type="file" name="file" accept="{{ selected.accept }}" required></label>
             <label class="focus-label">Optional feedback focus<input type="text" name="focus" maxlength="500" placeholder="{{ selected.focus }}"></label>
             <button type="submit">Get {{ selected.label|lower }} feedback <span>&rarr;</span></button>
@@ -60,11 +81,11 @@
 
     <section class="feedback-section" aria-labelledby="feedback-title">
       <div class="section-heading">
-        <div><h2 id="feedback-title">Model feedback</h2><p>{% if filename %}Reviewing {{ filename }}{% else %}Your feedback will appear here after an upload.{% endif %}</p></div>
+        <div><h2 id="feedback-title">Mentor feedback</h2><p>{% if filename %}Reviewing {{ filename }}{% else %}Your feedback will appear here after an upload.{% endif %}</p></div>
       </div>
       <div class="feedback-panel" aria-live="polite">
         {% if output %}
-          <div class="feedback-meta"><span>Feedback ready</span><span>{{ filename }}</span></div>
+          <div class="feedback-meta"><span>Feedback from {{ mentors[selected_mentor].name }}</span><span>{{ filename }}</span></div>
           <p class="answer">{{ output }}</p>
         {% else %}
           <div class="empty-state"><div class="spark">&#10022;</div><p>Ready when you are.</p><span>Choose one of the three upload options above.</span></div>

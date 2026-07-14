@@ -2,7 +2,7 @@ import os
 import unittest
 from io import BytesIO
 
-from app import app
+from app import app, build_feedback_prompt
 from docx import Document
 from pptx import Presentation
 
@@ -19,6 +19,7 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertIn(b"Document", response.data)
         self.assertIn(b"Transcript", response.data)
         self.assertIn(b"PowerPoint", response.data)
+        self.assertIn(b"Dr. Nanshu Lu", response.data)
         self.assertNotIn(b'name="file"', response.data)
 
     def test_clicking_type_shows_one_upload_form(self):
@@ -48,6 +49,30 @@ class PromptlyTestCase(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn(b"not supported", response.data)
+
+    def test_rejects_unknown_mentor(self):
+        response = self.client.post(
+            "/feedback",
+            data={
+                "content_type": "document",
+                "mentor_id": "unknown-mentor",
+                "file": (BytesIO(b"Example content"), "example.txt"),
+            },
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(b"available mentor", response.data)
+
+    def test_feedback_prompt_identifies_mentor(self):
+        prompt = build_feedback_prompt(
+            "document",
+            "example.txt",
+            "Example content",
+            "clarity",
+            "dr-nanshu-lu",
+        )
+        self.assertIn("Dr. Nanshu Lu", prompt)
+        self.assertIn("specialty, thinking process, and feedback style", prompt)
 
     def test_word_document_upload_is_read(self):
         file_data = BytesIO()
