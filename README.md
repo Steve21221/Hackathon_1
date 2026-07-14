@@ -1,43 +1,45 @@
-# Promptly
+# Promptly — Python local AI website
 
-Promptly is a starter website for sending user prompts to an external language model and displaying its response.
+Promptly is a small Python website for sending prompts to a locally running language model. The browser interface uses HTML and CSS, and all application logic runs in Python with Flask. No client-side JavaScript is used.
 
-## Model API contract
+## Run it on Windows
 
-The website sends `POST MODEL_API_URL` with JSON:
+1. Install [Python 3.11 or newer](https://www.python.org/downloads/). During installation, select **Add Python to PATH**.
+2. Open PowerShell in this project folder.
+3. Create a private Python environment:
+
+```powershell
+py -m venv .venv
+```
+
+4. Install the required Python packages:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+5. Start the website:
+
+```powershell
+.\.venv\Scripts\python.exe app.py
+```
+
+6. Open <http://127.0.0.1:5000> in your browser. Press `Ctrl+C` in PowerShell to stop the website.
+
+The website works in demo mode without a model.
+
+## Connect the local model
+
+Copy `.env.example` to `.env`, then set `MODEL_API_URL` to the local HTTP endpoint provided by the model team. Promptly sends:
 
 ```json
 { "prompt": "The user's input" }
 ```
 
-The model service can return any one of these string fields:
+The model service can return its answer in `output`, `response`, or `text`:
 
 ```json
 { "output": "The model response" }
 ```
 
-`response` and `text` are also accepted. If the model requires a bearer token, set `MODEL_API_KEY`. Both values are server-only. Copy `.env.example` to `.env.local` when the model endpoint is ready. Without `MODEL_API_URL`, the app uses a demo response.
-
-## Run it on your computer
-
-1. Install [Node.js 22 or newer](https://nodejs.org/).
-2. Download or clone this repository.
-3. Open a terminal in the project folder.
-4. Run:
-
-```bash
-npm install
-npm run dev
-```
-
-5. Open the local address shown in the terminal, normally <http://localhost:3000>.
-
-The website works in demo mode without a model. To connect a model running on the same computer, copy `.env.example` to `.env.local`, set `MODEL_API_URL` to the model server's local HTTP endpoint, and restart the website.
-
-To check the production build, run:
-
-```bash
-npm run build
-```
-
-Before launch, confirm the model team's authentication method, request/response schema, rate limits, timeout expectations, and whether prompts may contain sensitive data.
+The model server and this website must both be running while you use the application.
