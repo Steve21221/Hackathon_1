@@ -10,6 +10,16 @@ Promptly is a Python website for uploading a document, transcript, or PowerPoint
 
 Uploads are read in memory and are not saved by the website. The maximum file size is 20 MB.
 
+## Feedback mentors
+
+Users select a mentor before uploading their file. Each mentor identifier is passed to the local model so it can apply that mentor's specialty, thinking process, and feedback style.
+
+Currently available:
+
+- **Dr. Nanshu Lu** (`dr-nanshu-lu`)
+
+Additional mentors can be added to the `MENTORS` configuration in `app.py` when their model profiles become available.
+
 ## Run it on Windows
 
 ### First-time setup
@@ -88,7 +98,11 @@ Copy `.env.example` to `.env`, then set `MODEL_API_URL` to the local HTTP endpoi
 Promptly extracts the uploaded file's text, identifies its content type, includes the optional feedback focus, and sends the complete request as:
 
 ```json
-{ "prompt": "Feedback instructions followed by the extracted content" }
+{
+  "prompt": "Mentor and feedback instructions followed by the extracted content",
+  "mentor_id": "dr-nanshu-lu",
+  "mentor_name": "Dr. Nanshu Lu"
+}
 ```
 
 The model service can return its answer in `output`, `response`, or `text`:

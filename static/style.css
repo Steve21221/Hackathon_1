@@ -33,6 +33,23 @@ h1 em { color:var(--green); font-weight:400; }
 .choice-copy strong { font:400 19px Georgia,serif; margin-bottom:4px; }
 .choice-copy small { color:var(--muted); font-size:9px; letter-spacing:.05em; white-space:nowrap; }
 .choice-check { color:var(--accent); font-weight:700; }
+.mentor-section { margin-top:34px; padding-top:29px; border-top:1px solid rgba(23,35,28,.1); }
+.mentor-heading { display:flex; justify-content:space-between; align-items:flex-start; gap:20px; margin-bottom:16px; }
+.mentor-heading h2 { font:400 23px Georgia,serif; margin:0 0 5px; letter-spacing:-.02em; }
+.mentor-heading p { color:var(--muted); font-size:12px; margin:0; }
+.mentor-count { flex:none; color:var(--green); background:var(--sage); border-radius:20px; padding:6px 10px; font-size:9px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; }
+.mentor-grid { display:grid; grid-template-columns:minmax(0,720px); }
+.mentor-card { display:grid; grid-template-columns:68px 1fr auto; align-items:center; gap:18px; padding:18px; color:var(--ink); text-decoration:none; background:var(--paper); border:1px solid var(--line); border-radius:16px; box-shadow:0 10px 26px rgba(31,45,36,.04); }
+.mentor-card:hover,.mentor-card.selected { border-color:var(--green); }
+.mentor-card.selected { box-shadow:0 0 0 3px var(--sage),0 10px 26px rgba(31,45,36,.05); }
+.mentor-avatar { width:68px; height:68px; border-radius:19px; display:grid; place-items:center; color:white; background:linear-gradient(145deg,#315d46,#173c2a); font:italic 25px Georgia,serif; box-shadow:inset 0 0 0 1px rgba(255,255,255,.12); }
+.mentor-copy { min-width:0; }
+.mentor-copy strong,.mentor-copy small { display:block; }
+.mentor-copy strong { font:400 22px Georgia,serif; margin:4px 0 6px; }
+.mentor-copy small { color:var(--muted); font-size:11px; line-height:1.45; }
+.mentor-status { display:flex; align-items:center; gap:6px; color:var(--green); font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; }
+.mentor-status i { width:6px; height:6px; border-radius:50%; background:#4a9a69; }
+.mentor-selected { width:25px; height:25px; border-radius:50%; display:grid; place-items:center; color:white; background:var(--green); font-size:12px; }
 .active-upload { display:grid; grid-template-columns:.8fr 1.2fr; gap:38px; margin-top:18px; padding:28px; border:1px solid var(--accent); border-radius:18px; background:var(--paper); box-shadow:0 12px 34px rgba(31,45,36,.045); }
 .active-upload-copy { align-self:center; }
 .active-upload h3 { font:400 28px Georgia,serif; margin:18px 0 8px; }
@@ -65,4 +82,4 @@ input::file-selector-button { border:0; padding:6px 8px; margin-right:8px; borde
 footer { border-top:1px solid rgba(23,35,28,.12); max-width:1124px; margin:80px auto 0; min-height:100px; display:flex; align-items:center; justify-content:space-between; color:#7d877f; font-size:11px; }
 footer>span { color:var(--ink); font-weight:700; font-size:14px; }
 @media(max-width:920px){.type-choices{grid-template-columns:1fr}.active-upload{grid-template-columns:1fr;gap:24px}.choice-copy small{white-space:normal}}
-@media(max-width:640px){.nav,.upload-section,.feedback-section{padding-left:16px;padding-right:16px}.hero{padding:0 16px;margin-top:58px}h1{font-size:48px}.status{display:none}.section-heading h2{font-size:23px}.active-upload{padding:20px}.feedback-panel{padding:22px}footer{margin-left:16px;margin-right:16px;align-items:flex-start;flex-direction:column;justify-content:center;gap:8px}.file-badge{white-space:normal;text-align:right}}
+@media(max-width:640px){.nav,.upload-section,.feedback-section{padding-left:16px;padding-right:16px}.hero{padding:0 16px;margin-top:58px}h1{font-size:48px}.status{display:none}.section-heading h2{font-size:23px}.mentor-heading{display:block}.mentor-count{display:inline-block;margin-top:10px}.mentor-card{grid-template-columns:54px 1fr auto;gap:12px;padding:14px}.mentor-avatar{width:54px;height:54px;border-radius:15px;font-size:20px}.mentor-copy strong{font-size:19px}.active-upload{padding:20px}.feedback-panel{padding:22px}footer{margin-left:16px;margin-right:16px;align-items:flex-start;flex-direction:column;justify-content:center;gap:8px}.file-badge{white-space:normal;text-align:right}}
