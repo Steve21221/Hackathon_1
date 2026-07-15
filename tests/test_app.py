@@ -1,4 +1,3 @@
-import json
 import os
 import tempfile
 import unittest
@@ -18,14 +17,14 @@ class PromptlyTestCase(unittest.TestCase):
         os.environ.pop("OPENAI_API_KEY", None)
         os.environ.pop("OPENAI_MODEL", None)
         app.config.update(TESTING=True)
-        self.original_source_directory = app.config["MENTOR_SOURCE_DIRECTORY"]
-        self.source_temp = tempfile.TemporaryDirectory()
-        app.config["MENTOR_SOURCE_DIRECTORY"] = Path(self.source_temp.name) / "Source_Documents"
+        self.original_output_directory = app.config["OUTPUT_DIR"]
+        self.output_temp = tempfile.TemporaryDirectory()
+        app.config["OUTPUT_DIR"] = Path(self.output_temp.name) / "outputs"
         self.client = app.test_client()
 
     def tearDown(self):
-        app.config["MENTOR_SOURCE_DIRECTORY"] = self.original_source_directory
-        self.source_temp.cleanup()
+        app.config["OUTPUT_DIR"] = self.original_output_directory
+        self.output_temp.cleanup()
 
     def test_home_page_has_three_feedback_categories(self):
         response = self.client.get("/")
@@ -35,6 +34,86 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertIn(b"Talks &amp; slides", response.data)
         self.assertIn(b"Dr. Nanshu Lu", response.data)
         self.assertNotIn(b'name="file"', response.data)
+
+    def test_home_page_links_to_separate_pi_style_library(self):
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'href="/prompt-library"', response.data)
+        self.assertIn(b"nav-link-boxed", response.data)
+        self.assertNotIn(b"Mentor data", response.data)
+        self.assertNotIn(b'name="research_files"', response.data)
+        self.assertNotIn(b"Build your PI-style prompt library", response.data)
+
+        library_response = self.client.get("/prompt-library")
+        self.assertEqual(library_response.status_code, 200)
+        self.assertIn(b"Build your PI-style", library_response.data)
+        self.assertIn(b'name="research_files"', library_response.data)
+        self.assertIn(b'name="slide_files"', library_response.data)
+        self.assertIn(b'name="paper_files"', library_response.data)
+        self.assertIn(b"library_uploads.js", library_response.data)
+        self.assertIn(b"Feedback workspace", library_response.data)
+        self.assertIn(b"nav-link-boxed", library_response.data)
+
+        self.assertEqual(self.client.get("/mentor-data").status_code, 404)
+
+    def test_pi_style_library_generates_and_downloads_prompt(self):
+        response = self.client.post(
+            "/generate-prompts",
+            data={
+                "research_files": (
+                    BytesIO(
+                        b"Professor asks us to clarify the hypothesis, compare mechanisms, "
+                        b"and define the next experiment."
+                    ),
+                    "meeting-notes.txt",
+                )
+            },
+            content_type="multipart/form-data",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"PI-style prompts ready", response.data)
+        self.assertIn(b"Research Ideas / Meeting Minutes", response.data)
+        self.assertNotIn(b"Talks / Presentations / Slides</h3>", response.data)
+        run_id = response.headers["X-Prompt-Run-Id"]
+        run_directory = Path(app.config["OUTPUT_DIR"]) / run_id
+        self.assertTrue((run_directory / "meeting_research_pi_prompt.txt").is_file())
+        self.assertTrue((run_directory / "all_pi_style_prompts.txt").is_file())
+
+        download = self.client.get(f"/download/{run_id}/meeting_research_pi_prompt")
+        self.assertEqual(download.status_code, 200)
+        self.assertIn(b"Generated PI-style prompt", download.data)
+
+    @patch("app.call_prompt_model")
+    def test_pi_style_library_uses_configured_model_for_style_distillation(self, mock_prompt_model):
+        os.environ["MODEL_PROVIDER"] = "ollama"
+        mock_prompt_model.side_effect = [
+            "- clarify the framing\n- compare mechanisms\n- convert discussion into actions",
+            "Review future research by reframing the opportunity, comparing mechanisms, and ending with decisive actions.",
+        ]
+
+        response = self.client.post(
+            "/generate-prompts",
+            data={"research_files": (BytesIO(b"A detailed professor review example."), "review.txt")},
+            content_type="multipart/form-data",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(mock_prompt_model.call_count, 2)
+        run_id = response.headers["X-Prompt-Run-Id"]
+        generated = (Path(app.config["OUTPUT_DIR"]) / run_id / "meeting_research_pi_prompt.txt").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("Review future research by reframing the opportunity", generated)
+
+    def test_pi_style_library_rejects_unsupported_reference_file(self):
+        response = self.client.post(
+            "/generate-prompts",
+            data={"research_files": (BytesIO(b"binary"), "unsafe.exe")},
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(b"not supported", response.data)
 
     def test_clicking_type_shows_one_upload_form(self):
         response = self.client.get("/?type=research-ideas")
@@ -92,54 +171,6 @@ class PromptlyTestCase(unittest.TestCase):
     def test_mentor_style_prompt_is_available(self):
         prompt = load_mentor_prompt("dr-nanshu-lu")
         self.assertIn("research mentor", prompt)
-
-    def test_mentor_data_page_is_separate_from_feedback_workspace(self):
-        response = self.client.get("/mentor-data")
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Upload mentor source documents", response.data)
-        self.assertIn(b"Feedback workspace", response.data)
-        self.assertNotIn(b"Get mentor feedback", response.data)
-
-    def test_mentor_source_upload_creates_pending_batch_manifest(self):
-        response = self.client.post(
-            "/mentor-data/upload",
-            data={
-                "mentor_id": "dr-nanshu-lu",
-                "notes": "Examples of critical research feedback.",
-                "files": [
-                    (BytesIO(b"First mentor source"), "review one.txt"),
-                    (BytesIO(b"Second mentor source"), "comments.vtt"),
-                ],
-            },
-            content_type="multipart/form-data",
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Saved 2 documents", response.data)
-
-        pending_root = (
-            Path(app.config["MENTOR_SOURCE_DIRECTORY"]) / "dr-nanshu-lu" / "pending"
-        )
-        batches = list(pending_root.iterdir())
-        self.assertEqual(len(batches), 1)
-        manifest = json.loads((batches[0] / "manifest.json").read_text(encoding="utf-8"))
-        self.assertEqual(manifest["status"], "pending")
-        self.assertEqual(manifest["mentor_id"], "dr-nanshu-lu")
-        self.assertEqual(len(manifest["documents"]), 2)
-        self.assertTrue((batches[0] / "01-review_one.txt").is_file())
-        self.assertTrue((batches[0] / "02-comments.vtt").is_file())
-
-    def test_mentor_source_upload_rejects_unsupported_file(self):
-        response = self.client.post(
-            "/mentor-data/upload",
-            data={
-                "mentor_id": "dr-nanshu-lu",
-                "files": (BytesIO(b"executable"), "unsafe.exe"),
-            },
-            content_type="multipart/form-data",
-        )
-        self.assertEqual(response.status_code, 400)
-        self.assertIn(b"not supported", response.data)
-        self.assertFalse(Path(app.config["MENTOR_SOURCE_DIRECTORY"]).exists())
 
     @patch("app.OpenAI")
     def test_openai_receives_mentor_profile_and_review(self, mock_openai):
