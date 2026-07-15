@@ -358,7 +358,9 @@ def build_mode_prompt_artifacts(
 def build_combined_prompt_text(artifacts: dict[str, PromptArtifact]) -> str:
     sections: list[str] = []
     for mode in MODE_DEFINITIONS:
-        artifact = artifacts[mode]
+        artifact = artifacts.get(mode)
+        if artifact is None or artifact.record_count <= 0:
+            continue
         sections.append("=" * 80)
         sections.append(artifact.content.strip())
-    return "\n\n".join(sections) + "\n"
+    return "\n\n".join(sections) + "\n" if sections else ""

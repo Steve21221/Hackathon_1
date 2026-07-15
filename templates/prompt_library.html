@@ -7,38 +7,66 @@
   <title>Promptly &mdash; PI-style prompt library</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body>
+<body data-working-label="{{ working_label }}" data-provider-label="{{ provider_label }}">
   <main>
     <nav class="nav" aria-label="Main navigation">
       <a class="brand" href="{{ url_for('home') }}" aria-label="Promptly home"><span class="brand-mark">P</span><span>Promptly</span></a>
       <div class="nav-actions">
+        <button class="nav-link nav-link-boxed settings-trigger" type="button" data-open-settings>Model settings</button>
         <a class="nav-link nav-link-boxed" href="{{ url_for('home') }}"><span>&larr;</span> Feedback workspace</a>
-        <span class="status"><i></i>{% if model_provider == 'ollama' %}Local Qwen extraction{% elif model_provider == 'openai' %}OpenAI extraction{% elif model_provider in ['claude', 'anthropic'] %}Claude extraction{% else %}Local extraction{% endif %}</span>
+        <span class="status" data-provider-status><i></i><span data-provider-status-text>{% if model_provider == 'ollama' %}Local Qwen extraction{% elif model_provider == 'openai' %}OpenAI extraction{% elif model_provider in ['claude', 'anthropic'] %}Claude extraction{% else %}Local extraction{% endif %}</span></span>
       </div>
     </nav>
 
-    {% if error %}<div class="notice error" role="alert"><strong>We need one change:</strong> {{ error }}</div>{% endif %}
+    <div class="notice error" role="alert" data-page-error {% if not error %}hidden{% endif %}><strong>We need one change:</strong> <span data-page-error-text>{{ error }}</span></div>
 
     {% include "_prompt_library_blocks.html" %}
 
     <footer><span>Promptly</span><p>Local-first PI-style prompt workspace.</p></footer>
   </main>
+
+  <dialog class="settings-dialog" data-settings-dialog>
+    <form method="dialog" class="settings-form" data-settings-form>
+      <div class="settings-header">
+        <div>
+          <span class="section-kicker">Model provider</span>
+          <h2>Choose how Promptly generates answers</h2>
+          <p>Pick a local model or an API. Keys stay on this computer in <code>user_settings.json</code>.</p>
+        </div>
+        <button class="settings-close" type="submit" value="cancel" aria-label="Close settings">×</button>
+      </div>
+
+      <label class="form-label">Provider
+        <select name="MODEL_PROVIDER" data-settings-provider>
+          <option value="demo" {% if model_settings.MODEL_PROVIDER == 'demo' %}selected{% endif %}>Demo (no model call)</option>
+          <option value="ollama" {% if model_settings.MODEL_PROVIDER == 'ollama' %}selected{% endif %}>Local Ollama</option>
+          <option value="openai" {% if model_settings.MODEL_PROVIDER == 'openai' %}selected{% endif %}>OpenAI API</option>
+          <option value="claude" {% if model_settings.MODEL_PROVIDER == 'claude' %}selected{% endif %}>Claude API</option>
+        </select>
+      </label>
+
+      <div class="settings-group" data-settings-group="ollama">
+        <label class="form-label">Ollama base URL<input type="text" name="OLLAMA_BASE_URL" value="{{ model_settings.OLLAMA_BASE_URL }}" placeholder="http://127.0.0.1:11434"></label>
+        <label class="form-label">Ollama model<input type="text" name="OLLAMA_MODEL" value="{{ model_settings.OLLAMA_MODEL }}" placeholder="qwen3.5:9b"></label>
+      </div>
+
+      <div class="settings-group" data-settings-group="openai">
+        <label class="form-label">OpenAI API key<input type="password" name="OPENAI_API_KEY" value="{{ model_settings.OPENAI_API_KEY }}" placeholder="{% if model_settings.OPENAI_API_KEY_SET %}Saved on this computer{% else %}sk-...{% endif %}" autocomplete="off"></label>
+        <label class="form-label">OpenAI model<input type="text" name="OPENAI_MODEL" value="{{ model_settings.OPENAI_MODEL }}" placeholder="gpt-5-mini"></label>
+      </div>
+
+      <div class="settings-group" data-settings-group="claude">
+        <label class="form-label">Anthropic API key<input type="password" name="ANTHROPIC_API_KEY" value="{{ model_settings.ANTHROPIC_API_KEY }}" placeholder="{% if model_settings.ANTHROPIC_API_KEY_SET %}Saved on this computer{% else %}sk-ant-...{% endif %}" autocomplete="off"></label>
+        <label class="form-label">Claude model<input type="text" name="CLAUDE_MODEL" value="{{ model_settings.CLAUDE_MODEL }}" placeholder="claude-sonnet-4-5"></label>
+      </div>
+
+      <p class="settings-note" data-settings-message hidden></p>
+      <div class="settings-actions">
+        <button class="primary-button" type="submit" value="save" data-settings-save>Save settings <span>&rarr;</span></button>
+      </div>
+    </form>
+  </dialog>
+
   <script src="{{ url_for('static', filename='library_uploads.js') }}"></script>
-  {% if reset_on_refresh %}
-    <script>
-      (function () {
-        var libraryUrl = {{ prompt_clean_url|tojson }};
-        var navigation = performance.getEntriesByType && performance.getEntriesByType("navigation")[0];
-        var isReload = navigation ? navigation.type === "reload" : performance.navigation && performance.navigation.type === 1;
-        if (isReload) {
-          window.location.replace(libraryUrl);
-          return;
-        }
-        if (window.history && window.history.replaceState) {
-          window.history.replaceState(null, "", libraryUrl);
-        }
-      }());
-    </script>
-  {% endif %}
 </body>
 </html>

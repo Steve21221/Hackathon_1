@@ -21,14 +21,18 @@ class PromptlyTestCase(unittest.TestCase):
         app.config.update(TESTING=True)
         self.original_output_directory = app.config["OUTPUT_DIR"]
         self.original_mentor_library_directory = app.config["MENTOR_LIBRARY_DIR"]
+        self.original_settings_path = app.config.get("SETTINGS_PATH")
         self.output_temp = tempfile.TemporaryDirectory()
         app.config["OUTPUT_DIR"] = Path(self.output_temp.name) / "outputs"
         app.config["MENTOR_LIBRARY_DIR"] = Path(self.output_temp.name) / "mentor_files"
+        app.config["SETTINGS_PATH"] = Path(self.output_temp.name) / "user_settings.json"
         self.client = app.test_client()
 
     def tearDown(self):
         app.config["OUTPUT_DIR"] = self.original_output_directory
         app.config["MENTOR_LIBRARY_DIR"] = self.original_mentor_library_directory
+        if self.original_settings_path is not None:
+            app.config["SETTINGS_PATH"] = self.original_settings_path
         self.output_temp.cleanup()
 
     def test_home_page_has_three_feedback_categories(self):
@@ -37,7 +41,8 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertIn(b"Papers &amp; proposals", response.data)
         self.assertIn(b"Research ideas", response.data)
         self.assertIn(b"Talks &amp; slides", response.data)
-        self.assertNotIn(b'name="file"', response.data)
+        self.assertIn(b'data-choose-prompt', response.data)
+        self.assertIn(b'data-upload-panel="research-ideas"', response.data)
 
     def test_home_page_embeds_pi_style_library_workflow(self):
         response = self.client.get("/")
@@ -106,6 +111,12 @@ class PromptlyTestCase(unittest.TestCase):
         download = self.client.get(f"/download/{run_id}/meeting_research_pi_prompt")
         self.assertEqual(download.status_code, 200)
         self.assertIn(b"Generated PI-style prompt", download.data)
+
+        combined = (run_directory / "all_pi_style_prompts.txt").read_text(encoding="utf-8")
+        self.assertIn("SOURCE FILES: meeting-notes.txt", combined)
+        self.assertNotIn("No uploaded references; using default mode prompt.", combined)
+        self.assertNotIn("MODE: slides_talk_pi", combined)
+        self.assertNotIn("MODE: paper_proposal_pi", combined)
 
     @patch("app.call_prompt_model")
     def test_pi_style_library_uses_configured_model_for_style_distillation(self, mock_prompt_model):
@@ -318,8 +329,10 @@ class PromptlyTestCase(unittest.TestCase):
     def test_clicking_type_shows_one_upload_form(self):
         response = self.client.get("/?type=research-ideas")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data.count(b'name="file"'), 1)
+        self.assertIn(b'data-upload-panel="research-ideas"', response.data)
         self.assertIn(b"Choose a research idea", response.data)
+        self.assertIn(b'data-type-choice', response.data)
+        self.assertIn(b'data-feedback-mentor-card', response.data)
 
     def test_research_idea_upload_returns_demo_feedback(self):
         response = self.client.post(
@@ -333,6 +346,43 @@ class PromptlyTestCase(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"uploaded and read successfully", response.data)
+        self.assertIn(b"markdown-body", response.data)
+
+    def test_ajax_feedback_returns_json_without_page_reload_payload(self):
+        response = self.client.post(
+            "/feedback",
+            data={
+                "content_type": "research-ideas",
+                "mentor_id": "dr-nanshu-lu",
+                "file": (BytesIO(b"An early research idea."), "idea.txt"),
+            },
+            content_type="multipart/form-data",
+            headers={"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"},
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn("output_html", payload)
+        self.assertIn("<h2>", payload["output_html"])
+        self.assertIn("idea.txt", payload["filename"])
+
+    def test_settings_api_saves_provider_choice(self):
+        response = self.client.post(
+            "/api/settings",
+            json={
+                "MODEL_PROVIDER": "demo",
+                "OLLAMA_BASE_URL": "http://127.0.0.1:11434",
+                "OLLAMA_MODEL": "qwen3.5:9b",
+                "OPENAI_API_KEY": "",
+                "OPENAI_MODEL": "gpt-5-mini",
+                "ANTHROPIC_API_KEY": "",
+                "CLAUDE_MODEL": "claude-sonnet-4-5",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["model_provider"], "demo")
+        self.assertIn(b"Model settings", self.client.get("/").data)
 
     def test_rejects_wrong_file_type(self):
         response = self.client.post(
@@ -355,6 +405,88 @@ class PromptlyTestCase(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn(b"available mentor", response.data)
+
+    def test_home_page_lists_library_mentors_for_feedback(self):
+        create = self.client.post(
+            "/generate-prompts",
+            data={
+                "prompt_mentor_name": "Custom Lab",
+                "slide_files": (
+                    BytesIO(b"Remove duplicate panels and clarify the takeaway."),
+                    "slides.txt",
+                ),
+            },
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(create.status_code, 200)
+
+        response = self.client.get("/?prompt_mentor=custom-lab&mentor=custom-lab&type=talks-slides")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Choose a mentor for feedback", response.data)
+        self.assertIn(b"Custom Lab", response.data)
+        self.assertIn(b'name="mentor_id" value="custom-lab"', response.data)
+
+    def test_feedback_uses_generated_library_prompt_for_matching_category(self):
+        create = self.client.post(
+            "/generate-prompts",
+            data={
+                "prompt_mentor_name": "Style Mentor",
+                "slide_files": (
+                    BytesIO(b"Remove duplicate panels and clarify the takeaway."),
+                    "slides.txt",
+                ),
+            },
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(create.status_code, 200)
+
+        # Category without its own generated prompt should fall back to the
+        # library's available style prompt instead of blocking feedback.
+        fallback = self.client.post(
+            "/feedback",
+            data={
+                "content_type": "research-ideas",
+                "mentor_id": "style-mentor",
+                "file": (BytesIO(b"A research idea."), "idea.txt"),
+            },
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(fallback.status_code, 200)
+        self.assertIn(b"uploaded and read successfully", fallback.data)
+
+        os.environ["MODEL_PROVIDER"] = "ollama"
+        with patch("app.call_ollama", return_value="Library mentor feedback") as mock_ollama:
+            response = self.client.post(
+                "/feedback",
+                data={
+                    "content_type": "talks-slides",
+                    "mentor_id": "style-mentor",
+                    "file": (BytesIO(b"Slide one: main claim"), "deck.txt"),
+                },
+                content_type="multipart/form-data",
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Library mentor feedback", response.data)
+        self.assertEqual(mock_ollama.call_count, 1)
+        system_prompt = mock_ollama.call_args.args[0]
+        self.assertIn("Style Mentor", system_prompt)
+        self.assertIn("Use the professor's style", system_prompt)
+
+        with patch("app.call_ollama", return_value="Fallback style feedback") as mock_fallback:
+            mismatched = self.client.post(
+                "/feedback",
+                data={
+                    "content_type": "research-ideas",
+                    "mentor_id": "style-mentor",
+                    "file": (BytesIO(b"A research idea needing review."), "idea2.txt"),
+                },
+                content_type="multipart/form-data",
+            )
+        self.assertEqual(mismatched.status_code, 200)
+        self.assertIn(b"Fallback style feedback", mismatched.data)
+        fallback_system = mock_fallback.call_args.args[0]
+        self.assertIn("No Research Ideas / Meeting Minutes prompt", fallback_system)
+        self.assertIn("Talks / Presentations / Slides", fallback_system)
 
     def test_feedback_prompt_identifies_mentor(self):
         prompt = build_feedback_prompt(
