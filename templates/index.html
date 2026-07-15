@@ -11,7 +11,7 @@
   <main>
     <nav class="nav" aria-label="Main navigation">
       <a class="brand" href="{{ url_for('home') }}" aria-label="Promptly home"><span class="brand-mark">P</span><span>Promptly</span></a>
-      <span class="status"><i></i> Python &middot; {% if model_provider == 'ollama' %}local Ollama{% elif model_provider == 'openai' %}OpenAI{% else %}demo mode{% endif %}</span>
+      <div class="nav-actions"><a class="nav-link" href="{{ url_for('mentor_data') }}">Mentor data</a><span class="status"><i></i> Python &middot; {% if model_provider == 'ollama' %}local Ollama{% elif model_provider == 'openai' %}OpenAI{% else %}demo mode{% endif %}</span></div>
     </nav>
 
     <section class="hero">
@@ -39,7 +39,7 @@
 
       <section class="mentor-section" id="mentor" aria-labelledby="mentor-title">
         <div class="mentor-heading">
-          <div><h2 id="mentor-title">Choose your mentor</h2><p>Each mentor brings a distinct specialty, thinking process, and feedback style.</p></div>
+          <div><h2 id="mentor-title">Choose your mentor</h2><p>Select who should review your work.</p></div>
           <span class="mentor-count">{{ mentors|length }} available</span>
         </div>
         <div class="mentor-grid" role="radiogroup" aria-label="Available feedback mentors">

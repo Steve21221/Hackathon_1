@@ -8,7 +8,7 @@ Promptly is a local-first Python website for uploading work and receiving catego
 - Research ideas: `.pdf`, `.docx`, and `.txt`
 - Talks and slides: `.pptx`, `.pdf`, `.docx`, `.txt`, `.srt`, and `.vtt`
 
-Uploads are read in memory and are not saved by the website. The maximum file size is 20 MB.
+Feedback uploads are read in memory and are not saved by the website. The maximum file size is 20 MB.
 
 ## Feedback mentors
 
@@ -19,6 +19,16 @@ Currently available:
 - **Dr. Nanshu Lu** (`dr-nanshu-lu`)
 
 The current general prompt is stored in `Mentor_Data/dr-nanshu-lu.txt`. It is intentionally easy to replace when the prompt contributor supplies a validated version. Each mentor listed on the website has a corresponding prompt file in `Mentor_Data`; additional mentors can be added to the `MENTORS` configuration and that folder.
+
+### Mentor source-document intake
+
+The separate `/mentor-data` page lets an authorized user select a mentor and upload up to 10 source documents in one 20 MB batch. Unlike feedback uploads, these files are intentionally saved locally under:
+
+```text
+Mentor_Data/Source_Documents/<mentor-id>/pending/<batch-id>/
+```
+
+Each batch contains the source files and a `manifest.json` for the future prompt-extraction program. The manifest records the selected mentor, optional contributor notes, filenames, sizes, SHA-256 hashes, and a `pending` status. The entire `Source_Documents` folder is ignored by Git so private or unpublished materials are not pushed to GitHub accidentally.
 
 ## Run it on Windows
 

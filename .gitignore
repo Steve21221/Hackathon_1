@@ -45,3 +45,6 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+
+# Local mentor source documents may contain private or unpublished material
+/Mentor_Data/Source_Documents/

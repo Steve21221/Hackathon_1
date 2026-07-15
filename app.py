@@ -1,8 +1,12 @@
+import hashlib
+import json
 import os
 import time
+from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from docx import Document
 from dotenv import load_dotenv
@@ -11,6 +15,7 @@ from openai import OpenAI, OpenAIError
 from pptx import Presentation
 from pypdf import PdfReader
 import requests
+from werkzeug.utils import secure_filename
 
 load_dotenv()
 
@@ -68,15 +73,16 @@ MENTORS = {
         "name": "Dr. Nanshu Lu",
         "initials": "NL",
         "status": "Available mentor",
-        "description": (
-            "Her specialty, thinking process, and feedback style are configured "
-            "in a separate mentor prompt used by the OpenAI model."
-        ),
+        "description": "Available for research and engineering feedback.",
         "prompt_file": "dr-nanshu-lu.txt",
     }
 }
 DEFAULT_MENTOR_ID = "dr-nanshu-lu"
 MENTOR_DATA_DIRECTORY = PROJECT_ROOT / "Mentor_Data"
+app.config["MENTOR_SOURCE_DIRECTORY"] = MENTOR_DATA_DIRECTORY / "Source_Documents"
+MENTOR_SOURCE_EXTENSIONS = {".docx", ".pdf", ".pptx", ".srt", ".txt", ".vtt"}
+MENTOR_SOURCE_ACCEPT = ",".join(sorted(MENTOR_SOURCE_EXTENSIONS))
+MAX_MENTOR_SOURCE_FILES = 10
 
 BASE_MENTOR_INSTRUCTIONS = """You are providing expert research mentorship.
 Follow the selected mentor style profile closely without claiming to be the real person.
@@ -288,6 +294,23 @@ def render_home(**context: Any):
     )
 
 
+def render_mentor_data(**context: Any):
+    defaults = {
+        "error": "",
+        "success": "",
+        "batch_id": "",
+        "selected_mentor": DEFAULT_MENTOR_ID,
+    }
+    defaults.update(context)
+    return render_template(
+        "mentor_data.html",
+        mentors=MENTORS,
+        source_accept=MENTOR_SOURCE_ACCEPT,
+        max_files=MAX_MENTOR_SOURCE_FILES,
+        **defaults,
+    )
+
+
 @app.get("/")
 def home():
     selected_type = request.args.get("type", "").strip().lower()
@@ -297,6 +320,104 @@ def home():
     if selected_mentor not in MENTORS:
         selected_mentor = DEFAULT_MENTOR_ID
     return render_home(selected_type=selected_type, selected_mentor=selected_mentor)
+
+
+@app.get("/mentor-data")
+def mentor_data():
+    selected_mentor = request.args.get("mentor", DEFAULT_MENTOR_ID).strip().lower()
+    if selected_mentor not in MENTORS:
+        selected_mentor = DEFAULT_MENTOR_ID
+    return render_mentor_data(selected_mentor=selected_mentor)
+
+
+@app.post("/mentor-data/upload")
+def upload_mentor_data():
+    mentor_id = request.form.get("mentor_id", "").strip().lower()
+    notes = request.form.get("notes", "").strip()[:1_000]
+    uploads = [item for item in request.files.getlist("files") if item and item.filename]
+
+    if mentor_id not in MENTORS:
+        return render_mentor_data(error="Please choose an available mentor."), 400
+    if not uploads:
+        return render_mentor_data(
+            error="Please choose at least one mentor source document.",
+            selected_mentor=mentor_id,
+        ), 400
+    if len(uploads) > MAX_MENTOR_SOURCE_FILES:
+        return render_mentor_data(
+            error=f"Upload no more than {MAX_MENTOR_SOURCE_FILES} documents in one batch.",
+            selected_mentor=mentor_id,
+        ), 400
+
+    validated_uploads = []
+    for upload in uploads:
+        original_name = Path(upload.filename).name
+        safe_name = secure_filename(original_name)
+        extension = Path(safe_name).suffix.lower()
+        if not safe_name or extension not in MENTOR_SOURCE_EXTENSIONS:
+            allowed = ", ".join(sorted(MENTOR_SOURCE_EXTENSIONS))
+            return render_mentor_data(
+                error=f"{original_name or 'That file'} is not supported. Use: {allowed}.",
+                selected_mentor=mentor_id,
+            ), 400
+        file_bytes = upload.read()
+        if not file_bytes:
+            return render_mentor_data(
+                error=f"{original_name} is empty.",
+                selected_mentor=mentor_id,
+            ), 400
+        validated_uploads.append((original_name, safe_name, file_bytes))
+
+    batch_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:8]
+    source_root = Path(app.config["MENTOR_SOURCE_DIRECTORY"])
+    pending_root = source_root / mentor_id / "pending"
+    temporary_batch = pending_root / f".{batch_id}.uploading"
+    batch_directory = pending_root / batch_id
+    documents = []
+
+    try:
+        temporary_batch.mkdir(parents=True, exist_ok=False)
+        for index, (original_name, safe_name, file_bytes) in enumerate(validated_uploads, start=1):
+            stored_name = f"{index:02d}-{safe_name}"
+            (temporary_batch / stored_name).write_bytes(file_bytes)
+            documents.append(
+                {
+                    "original_name": original_name,
+                    "stored_name": stored_name,
+                    "size_bytes": len(file_bytes),
+                    "sha256": hashlib.sha256(file_bytes).hexdigest(),
+                }
+            )
+        manifest = {
+            "schema_version": 1,
+            "batch_id": batch_id,
+            "status": "pending",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "mentor_id": mentor_id,
+            "mentor_name": MENTORS[mentor_id]["name"],
+            "notes": notes,
+            "documents": documents,
+        }
+        (temporary_batch / "manifest.json").write_text(
+            json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        temporary_batch.replace(batch_directory)
+    except OSError:
+        app.logger.exception("Could not save mentor source batch %s", batch_id)
+        return render_mentor_data(
+            error="The mentor documents could not be saved on this computer.",
+            selected_mentor=mentor_id,
+        ), 500
+
+    return render_mentor_data(
+        success=(
+            f"Saved {len(documents)} document{'s' if len(documents) != 1 else ''} for "
+            f"{MENTORS[mentor_id]['name']}. The extraction program can now process this batch."
+        ),
+        batch_id=batch_id,
+        selected_mentor=mentor_id,
+    )
 
 
 @app.post("/feedback")
@@ -357,6 +478,8 @@ def feedback():
 
 @app.errorhandler(413)
 def file_too_large(_error: Exception):
+    if request.path.startswith("/mentor-data"):
+        return render_mentor_data(error="The upload is too large. The maximum batch size is 20 MB."), 413
     return render_home(error="The file is too large. The maximum upload size is 20 MB."), 413
 
 
