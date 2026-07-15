@@ -1,189 +1,210 @@
-# Promptly - Python local AI feedback website
+﻿# Hackathon — Local PI Style Prompt Workspace
 
-Promptly is a local-first Python website for uploading work and receiving category-specific, mentor-style feedback. It can use the open-source Qwen 3.5 model through Ollama entirely on the user's computer, with OpenAI available as an optional paid alternative. The interface uses HTML and CSS, and all application logic runs in Python with Flask. No client-side JavaScript is used.
+Hackathon is a local Flask web app for building reusable PI-style review prompts from your own reference materials. It helps you upload previous meeting notes, slide feedback, manuscript comments, and related documents, then generates mode-specific prompt files that can be reused for future research feedback.
 
-## Supported files
+The current workflow is designed for **local-first** use:
 
-- Papers and proposals: `.pdf`, `.docx`, and `.txt`
-- Research ideas: `.pdf`, `.docx`, and `.txt`
-- Talks and slides: `.pptx`, `.pdf`, `.docx`, `.txt`, `.srt`, and `.vtt`
+- The web app runs on `http://127.0.0.1:5000/`.
+- Uploaded files are read locally by the Flask app.
+- PI-style prompt generation can run locally through Ollama/Llama.
+- Generated prompt `.txt` files are saved locally under `outputs/<run_id>/`.
+- `.env` and generated outputs are ignored by git.
 
-Feedback uploads are read in memory and are not saved by the website. The maximum file size is 20 MB.
+## Main features
 
-## Feedback mentors
+### 1. Build Your PI Style Library
 
-Users select a mentor before uploading their file. The application combines the selected mentor's contributor-maintained style prompt with category-specific review instructions and the extracted file content.
+Upload reference materials into three PI-review modes:
 
-Currently available:
+| Mode | What to upload | What the app learns |
+| --- | --- | --- |
+| Research Ideas / Meeting Minutes | Meeting notes, research ideas, experiment plans, lab discussion records | How the PI reframes ideas, grounds them in context, decomposes variables, compares mechanisms, prioritizes roadmap items, and turns discussion into action items |
+| Talks / Presentations / Slides | Slide drafts, talk feedback, presentation notes, figure sets | Audience-first storytelling, title/significance framing, citation discipline, labels/annotations, visual consistency, takeaway messages, deletion of weak visuals, and concrete slide-level edits |
+| Papers / Proposals | Manuscript feedback, proposal comments, figure-set feedback, paper drafts | Practical value, central claim, coherent argument, evidence/context support, figures proving claims, claim-evidence alignment, and concrete manuscript revisions |
 
-- **Dr. Nanshu Lu** (`dr-nanshu-lu`)
+After clicking **Generate PI-Style Prompts**, the app shows concise prompt cards in the browser and saves prompt files locally.
 
-The current general prompt is stored in `Mentor_Data/dr-nanshu-lu.txt`. It is intentionally easy to replace when the prompt contributor supplies a validated version. Each mentor listed on the website has a corresponding prompt file in `Mentor_Data`; additional mentors can be added to the `MENTORS` configuration and that folder.
+### 2. Local prompt TXT outputs
 
-### Mentor source-document intake
-
-The separate `/mentor-data` page lets an authorized user select a mentor and upload up to 10 source documents in one 20 MB batch. Unlike feedback uploads, these files are intentionally saved locally under:
+Every prompt-generation run creates a folder like:
 
 ```text
-Mentor_Data/Source_Documents/<mentor-id>/pending/<batch-id>/
+outputs/<run_id>/
 ```
 
-Each batch contains the source files and a `manifest.json` for the future prompt-extraction program. The manifest records the selected mentor, optional contributor notes, filenames, sizes, SHA-256 hashes, and a `pending` status. The entire `Source_Documents` folder is ignored by Git so private or unpublished materials are not pushed to GitHub accidentally.
+For example:
 
-## Run it on Windows
+```text
+outputs/pi_style_library_pi_prompts_ab12cd34/
+```
 
-### Easy setup (recommended)
+Inside that folder you will find:
 
-The downloadable setup script installs Promptly in `%LOCALAPPDATA%\Promptly`, prepares its private Python environment, installs Ollama when needed, downloads the selected Qwen model, and creates a **Promptly** desktop shortcut.
+```text
+meeting_research_pi_prompt.txt
+slides_talk_pi_prompt.txt
+paper_proposal_pi_prompt.txt
+all_pi_style_prompts.txt
+```
 
-1. Download [`installer/Promptly-Setup.ps1`](installer/Promptly-Setup.ps1) from GitHub using the **Download raw file** button.
-2. Open PowerShell and run:
+The result page also displays the exact local path after generation:
+
+```text
+TXT files saved locally in ...\outputs\<run_id>
+```
+
+### 3. Review a document/transcript/PowerPoint
+
+The lower part of the page keeps a simple local upload flow for:
+
+- Document
+- Transcript
+- PowerPoint
+
+This reads a target file locally and returns mentor-style feedback. By default, if no external model endpoint is configured, this feedback route uses local demo feedback so the app remains runnable without paid APIs.
+
+## What runs locally?
+
+The app is local-first:
+
+| Component | Local? | Notes |
+| --- | --- | --- |
+| Flask web app | Yes | Runs at `127.0.0.1:5000` |
+| File upload and text extraction | Yes | Files are processed by local Python code |
+| PI prompt generation | Yes, when Ollama is enabled | Uses local Ollama at `127.0.0.1:11434` |
+| Generated prompt TXT files | Yes | Saved under `outputs/<run_id>/` |
+| Feedback demo route | Yes | Returns local demo feedback when no `MODEL_API_URL` is set |
+| External model feedback | Optional | Only used if you explicitly set `MODEL_API_URL` |
+
+## Supported file formats
+
+For the PI Style Library upload cards:
+
+```text
+.pdf, .docx, .pptx, .txt, .md
+```
+
+For the lower review-upload flow:
+
+- Document: `.pdf`, `.docx`, `.txt`
+- Transcript: `.txt`, `.srt`, `.vtt`, `.docx`
+- PowerPoint: `.pptx`
+
+The default Flask upload limit is 20 MB per request.
+
+## Quick start on Windows
+
+### 1. Clone the repository
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Downloads\Promptly-Setup.ps1"
+git clone https://github.com/XKfeng111/Hackathon.git
+cd Hackathon
 ```
 
-3. Choose a model based on the computer:
-
-   - Qwen 3.5 4B: approximately 3.4 GB; start here for a computer with 16 GB RAM.
-   - Qwen 3.5 9B: approximately 6.6 GB; recommended default for 32 GB RAM.
-   - Qwen 3.5 27B: approximately 17 GB; strongest offered setup option, recommended for 64 GB RAM.
-
-4. After setup, double-click **Promptly** on the desktop. Keep the opened command window running while using the website; close it or press `Ctrl+C` to stop Promptly.
-
-The setup needs internet access to download the code, Python packages, Ollama, and the model. After installation, feedback generation runs locally without an API key or per-token fee.
-
-### Manual setup
-
-#### First-time setup
-
-1. Install [Python 3.11 or newer](https://www.python.org/downloads/). During installation, select **Add Python to PATH**.
-2. Install [Git for Windows](https://git-scm.com/downloads/win) if it is not already installed.
-3. Close and reopen PowerShell after installing Python or Git.
-4. In PowerShell, move to the folder where you want to keep the project. For example:
-
-```powershell
-cd "$HOME\Documents"
-```
-
-5. Download the code from GitHub and enter the project folder:
-
-```powershell
-git clone https://github.com/Steve21221/Hackathon_1.git
-cd Hackathon_1
-```
-
-If the project is already on your computer, skip the clone command and move directly into its folder. On the original development computer, use:
-
-```powershell
-cd "C:\Users\ythst\Documents\Codex\2026-07-13\i\Hackathon_1"
-```
-
-Do not run the following commands from `C:\Windows\System32`. Confirm that you are in the correct folder by running:
-
-```powershell
-Get-Location
-Get-ChildItem
-```
-
-You should see `app.py`, `requirements.txt`, `templates`, and `static`.
-
-6. Create a private Python environment for the project:
+### 2. Create a virtual environment
 
 ```powershell
 py -m venv .venv
-```
-
-7. Install the required Python packages:
-
-```powershell
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-8. Start the website:
+If `py` is not available, install Python 3.11+ from <https://www.python.org/downloads/> and enable **Add Python to PATH**.
+
+### 3. Optional but recommended: enable local Ollama/Llama
+
+Install Ollama from <https://ollama.com/> and pull a local model:
 
 ```powershell
-.\.venv\Scripts\python.exe app.py
+ollama pull llama3.1:8b
 ```
 
-9. Keep PowerShell open and visit <http://127.0.0.1:5000> or <http://localhost:5000> in your browser.
-10. When you are finished, return to PowerShell and press `Ctrl+C` to stop the website.
-
-#### Run it again later
-
-You only need to create the environment and install packages once. On later visits, open PowerShell and run:
-
-```powershell
-cd "C:\path\to\Hackathon_1"
-.\.venv\Scripts\python.exe app.py
-```
-
-Replace `C:\path\to\Hackathon_1` with the actual project location on that computer. Then open <http://localhost:5000>.
-
-If PowerShell says that `py`, `git`, or `.\.venv\Scripts\python.exe` is not recognized, confirm that the required software is installed, reopen PowerShell, and verify that you are inside the `Hackathon_1` folder.
-
-Without a `.env` file, the website works in demo mode and makes no model request.
-
-## Run a local reasoning model with Ollama
-
-The recommended local provider is Ollama with Qwen 3.5. Copy `.env.example` to `.env`, then use:
-
-```text
-MODEL_PROVIDER=ollama
-OLLAMA_BASE_URL=http://127.0.0.1:11434
-OLLAMA_MODEL=qwen3.5:9b
-```
-
-The application sends the mentor instructions and extracted file text to Ollama's local API. Thinking mode is enabled so the model can reason before answering, but only the final feedback is displayed. The request uses a 32,768-token working context and limits the final response to 2,000 tokens.
-
-Ollama and the selected model must be installed and running. To install the default model manually:
-
-```powershell
-ollama pull qwen3.5:9b
-```
-
-No content is sent to OpenAI when `MODEL_PROVIDER=ollama`.
-
-## Optional: connect OpenAI
-
-This integration uses the OpenAI API. A ChatGPT subscription is separate from API usage, and API calls may cost money.
-
-1. Create an API key in your OpenAI API account.
-2. In the project folder, create your private `.env` file:
+Copy `.env.example` to `.env`:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-3. Open `.env` and add the key after `OPENAI_API_KEY=`. Do not put the key in GitHub, screenshots, chat messages, or shared documents.
-4. Keep the cost-conscious default model or change it as a team decision:
+The `.env` file should contain:
 
-```text
-MODEL_PROVIDER=openai
-OPENAI_API_KEY=your-private-key-here
-OPENAI_MODEL=gpt-5-mini
+```env
+PROMPT_LLM_PROVIDER=ollama
+OLLAMA_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=llama3.1:8b
 ```
 
-5. Restart the website after changing `.env`.
+If Ollama is not configured, the app still runs and falls back to deterministic prompt generation.
 
-The application extracts text from the upload in memory, then sends the extracted content—not the original file—to OpenAI. The request asks OpenAI not to store the response (`store=False`) and caps generated output at 2,000 tokens. Review your organization's OpenAI data and retention requirements before using confidential or unpublished work.
+### 4. Start the app
 
-## Mentor prompt contributor workflow
+```powershell
+.\.venv\Scripts\python.exe -m flask --app app run --host 127.0.0.1 --port 5000
+```
 
-The prompt contributor does not need to edit the Flask routes or file extraction code.
+Open:
 
-1. Open `Mentor_Data/dr-nanshu-lu.txt`.
-2. Replace the temporary general profile with the validated mentor-style prompt.
-3. Keep the prompt focused on review priorities, tone, critical questions, response organization, and examples of desired feedback behavior.
-4. Do not include an API key or private research content in the prompt file.
-5. Run the tests, then submit the change on a separate branch and pull request.
+```text
+http://127.0.0.1:5000/
+```
 
-## How feedback is generated
+## How to use the PI Style Library
 
-Promptly extracts the uploaded file's text, identifies the selected feedback category, includes the optional focus, and combines it with the mentor prompt. It then sends that request to the provider selected in `.env`:
+1. Open `http://127.0.0.1:5000/`.
+2. Go to **Build Your PI Style Library**.
+3. Upload one or more reference files in any of the three categories:
+   - Research Ideas / Meeting Minutes
+   - Talks / Presentations / Slides
+   - Papers / Proposals
+4. Click **Generate PI-Style Prompts**.
+5. Review the generated prompt cards on the page.
+6. Look for the line `TXT files saved locally in ...` to find the prompt folder.
+7. Open the generated `.txt` files from `outputs/<run_id>/` and copy them into your downstream feedback workflow.
 
-- `ollama`: a local Qwen model; no API key or per-token charge.
-- `openai`: the OpenAI Responses API; requires an API key and incurs API usage charges.
-- `demo`: no model request; returns a local confirmation message.
+You can upload multiple files per category. There is no fixed file-count limit in code, but the total request size is limited to 20 MB. In practice, 3–10 modest files per category is a good starting point.
 
-Secrets stay on the Python server and are never sent to the browser. The generated final answer is returned to the Mentor feedback panel.
+## Refresh behavior
+
+After prompt generation or feedback generation, the result is shown once. If you refresh the browser, the page resets to the clean home view so old `PI Style Prompts Ready` results do not stay on screen or get accidentally resubmitted.
+
+## Development
+
+Install dependencies:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+Run tests:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+At the time of this update, the test suite contains route, reader, prompt-generation, UI-rendering, and local-output tests.
+
+## Project structure
+
+```text
+app.py                         Flask app, upload routes, local/Ollama prompt generation, downloads
+raw_materials/reader.py        Extract text from PDF/DOCX/PPTX/TXT/MD uploads
+raw_materials/chunker.py       Split extracted text into chunks
+raw_materials/jsonl_builder.py Build structured JSONL-style records for legacy workflow
+raw_materials/prompt_builder.py Build deterministic fallback PI prompts
+templates/index.html           Main web UI
+static/style.css               UI styling
+static/library_uploads.js      Multi-file upload card behavior
+tests/                         Unit and route tests
+outputs/                       Local generated prompt/output files; ignored by git except .gitkeep
+```
+
+## Privacy and local data notes
+
+- Uploaded files are processed locally during the request.
+- Generated outputs are written to `outputs/<run_id>/`.
+- `outputs/`, `.env`, `.venv`, caches, and temporary reference folders are ignored by git.
+- Do not commit private reference files, API keys, or generated prompt-output folders.
+
+## Acknowledgements
+
+- Xianke Feng — project owner and workflow design.
+- ChatGPT/Codex — AI coding assistant for implementation, testing, and documentation support.
