@@ -32,16 +32,31 @@
       updateCard(input);
     });
 
-    function toggleMentorCreator(select) {
-      var form = select.closest('form');
+    function selectedMentorValue(form) {
+      var radio = form && form.querySelector('input[name="selected_prompt_mentor"]:checked');
+      return radio ? radio.value : '';
+    }
+
+    function updatePromptMentorCards(form) {
+      if (!form) return;
+      form.querySelectorAll('[data-prompt-mentor-card]').forEach(function (card) {
+        var radio = card.querySelector('input[name="selected_prompt_mentor"]');
+        var isSelected = Boolean(radio && radio.checked);
+        card.classList.toggle('selected', isSelected);
+        card.setAttribute('aria-checked', isSelected ? 'true' : 'false');
+      });
+    }
+
+    function toggleMentorCreator(form) {
       if (!form) return;
       var creator = form.querySelector('[data-mentor-creator]');
       if (!creator) return;
       var input = creator.querySelector('input[name="prompt_mentor_name"]');
+      var hasSelectedMentor = Boolean(selectedMentorValue(form));
 
-      creator.hidden = Boolean(select.value);
+      creator.hidden = hasSelectedMentor;
       if (input) {
-        if (select.value) {
+        if (hasSelectedMentor) {
           input.removeAttribute('required');
         } else {
           input.setAttribute('required', 'required');
@@ -49,11 +64,10 @@
       }
     }
 
-    function toggleDeleteMentorButton(select) {
-      var form = select.closest('form');
+    function toggleDeleteMentorButton(form) {
       if (!form) return;
       var button = form.querySelector('[data-delete-mentor-button]');
-      if (button) button.hidden = !select.value;
+      if (button) button.hidden = !selectedMentorValue(form);
     }
 
     function clearStoredFileDisplays(form) {
@@ -64,13 +78,15 @@
       });
     }
 
-    function handleMentorSelectionChange(select) {
-      toggleMentorCreator(select);
-      toggleDeleteMentorButton(select);
-      var form = select.closest('form');
-      var libraryUrl = select.getAttribute('data-mentor-home-url') || '/prompt-library';
-      if (select.value) {
-        window.location.assign(libraryUrl + '?prompt_mentor=' + encodeURIComponent(select.value));
+    function handleMentorSelectionChange(input) {
+      var form = input.closest('form');
+      updatePromptMentorCards(form);
+      toggleMentorCreator(form);
+      toggleDeleteMentorButton(form);
+      var wrapper = input.closest('[data-prompt-mentor-cards]');
+      var libraryUrl = (wrapper && wrapper.getAttribute('data-mentor-home-url')) || '/prompt-library';
+      if (input.value) {
+        window.location.assign(libraryUrl + '?prompt_mentor=' + encodeURIComponent(input.value));
         return;
       }
       clearStoredFileDisplays(form);
@@ -79,10 +95,12 @@
       }
     }
 
-    document.querySelectorAll('[data-selected-mentor]').forEach(function (select) {
-      select.addEventListener('change', function () { handleMentorSelectionChange(select); });
-      toggleMentorCreator(select);
-      toggleDeleteMentorButton(select);
+    document.querySelectorAll('input[name="selected_prompt_mentor"]').forEach(function (input) {
+      var form = input.closest('form');
+      input.addEventListener('change', function () { handleMentorSelectionChange(input); });
+      updatePromptMentorCards(form);
+      toggleMentorCreator(form);
+      toggleDeleteMentorButton(form);
     });
   });
 }());

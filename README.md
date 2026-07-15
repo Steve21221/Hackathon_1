@@ -12,7 +12,7 @@ Feedback uploads are read in memory and are not saved by the website. The maximu
 
 ## Build a PI-style prompt library
 
-The separate `/prompt-library` page integrates the `xianke-pi-style-workspace` extraction workflow while keeping the main feedback page focused. Use the boxed navigation link to switch between the feedback workspace and prompt library. Upload prior PI comments or examples in any of these groups:
+The homepage integrates the `xianke-pi-style-workspace` extraction workflow with the main feedback workspace, and `/prompt-library` remains available as a focused prompt-library view. Upload prior PI comments or examples in any of these groups:
 
 - Research ideas and meeting minutes
 - Talks, presentations, and slides
@@ -39,6 +39,11 @@ Currently available:
 - **Dr. Nanshu Lu** (`dr-nanshu-lu`)
 
 The current general prompt is stored in `Mentor_Data/dr-nanshu-lu.txt`. It is intentionally easy to replace when the prompt contributor supplies a validated version. Each mentor listed on the website has a corresponding prompt file in `Mentor_Data`; additional mentors can be added to the `MENTORS` configuration and that folder.
+
+## Contributors
+
+- Steve21221
+- Xianke Feng (`XKfeng111`)
 
 ## Run it on Windows
 
