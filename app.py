@@ -53,6 +53,7 @@ app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024
 MAX_PROMPT_LENGTH = 4_000
 MAX_EXTRACTED_TEXT = 100_000
 MAX_PROMPT_PREVIEW_SEGMENTS = 3
+DELETE_REFERENCE_FILE_ERROR = "Please select an existing library file to delete."
 PROJECT_ROOT = Path(__file__).resolve().parent
 app.config["OUTPUT_DIR"] = PROJECT_ROOT / "outputs"
 app.config["MENTOR_LIBRARY_DIR"] = PROJECT_ROOT / "mentor_files"
@@ -458,6 +459,15 @@ def read_prompt_mentor(slug: str) -> dict[str, str] | None:
     }
 
 
+def prompt_mentor_initials(name: str) -> str:
+    words = re.findall(r"[A-Za-z0-9]+", name.upper())
+    if not words:
+        return "PI"
+    if len(words) == 1:
+        return words[0][:2]
+    return "".join(word[0] for word in words[:2])
+
+
 def list_prompt_mentors() -> list[dict[str, str]]:
     root = get_mentor_library_dir()
     if not root.exists():
@@ -467,6 +477,9 @@ def list_prompt_mentors() -> list[dict[str, str]]:
         if child.is_dir():
             mentor = read_prompt_mentor(child.name)
             if mentor:
+                mentor["initials"] = prompt_mentor_initials(mentor["name"])
+                mentor["status"] = "PI-style library"
+                mentor["description"] = "Stored reference files and generated prompts for this mentor."
                 mentors.append(mentor)
     return mentors
 
@@ -563,6 +576,27 @@ def delete_prompt_mentor(slug: str) -> None:
     if not directory.exists() or read_prompt_mentor(safe_slug) is None:
         raise ValueError("Please select an existing mentor to delete.")
     shutil.rmtree(directory)
+
+
+def delete_stored_reference_file(slug: str, mode: str, filename: str) -> None:
+    safe_slug = mentor_slug(slug)
+    if safe_slug != slug.strip().lower() or read_prompt_mentor(safe_slug) is None:
+        raise ValueError(DELETE_REFERENCE_FILE_ERROR)
+    if mode not in MODE_DEFINITIONS:
+        raise ValueError(DELETE_REFERENCE_FILE_ERROR)
+    safe_filename = secure_filename(filename)
+    if safe_filename != filename or not is_supported_filename(safe_filename):
+        raise ValueError(DELETE_REFERENCE_FILE_ERROR)
+
+    raw_directory = (mode_dir_for_mentor(safe_slug, mode) / "raw").resolve()
+    root = get_mentor_library_dir().resolve()
+    if root not in raw_directory.parents:
+        raise ValueError(DELETE_REFERENCE_FILE_ERROR)
+
+    target = (raw_directory / safe_filename).resolve()
+    if raw_directory not in target.parents or not target.is_file():
+        raise ValueError(DELETE_REFERENCE_FILE_ERROR)
+    target.unlink()
 
 
 def compact_prompt_preview(artifact: PromptArtifact) -> str:
@@ -684,25 +718,12 @@ def prompt_download_path(run_id: str, kind: str) -> Path | None:
     return None
 
 
-def render_home(**context: Any):
-    defaults = {
-        "output": "",
-        "error": "",
-        "filename": "",
-        "selected_type": "",
-        "selected_mentor": DEFAULT_MENTOR_ID,
-        "model_provider": os.getenv("MODEL_PROVIDER", "demo").strip().lower() or "demo",
-    }
-    defaults.update(context)
-    return render_template(
-        "index.html",
-        upload_types=UPLOAD_TYPES,
-        mentors=MENTORS,
-        **defaults,
-    )
-
-
-def render_prompt_library(**context: Any):
+def prompt_library_context(
+    *,
+    default_clean_endpoint: str,
+    selected_prompt_mentor: str = "",
+    **context: Any,
+) -> dict[str, Any]:
     selected_prompt_mentor = context.get("selected_prompt_mentor", "")
     if not selected_prompt_mentor:
         selected_prompt_mentor = request.args.get("prompt_mentor", "").strip().lower()
@@ -719,10 +740,12 @@ def render_prompt_library(**context: Any):
         "prompt_run_location": "",
         "prompt_download_urls": {},
         "prompt_message": "",
-        "prompt_clean_url": url_for(
-            "prompt_library",
-            prompt_mentor=selected_prompt_mentor,
-        ) if selected_prompt_mentor else url_for("prompt_library"),
+        "prompt_clean_url": (
+            url_for(default_clean_endpoint, prompt_mentor=selected_prompt_mentor)
+            if selected_prompt_mentor
+            else url_for(default_clean_endpoint)
+        ),
+        "prompt_library_base_url": url_for(default_clean_endpoint),
         "prompt_mentors": list_prompt_mentors(),
         "selected_prompt_mentor": selected_prompt_mentor,
         "selected_prompt_mentor_profile": selected_profile,
@@ -730,6 +753,36 @@ def render_prompt_library(**context: Any):
         "reset_on_refresh": False,
     }
     defaults.update(context)
+    return defaults
+
+
+def render_home(**context: Any):
+    defaults = {
+        "output": "",
+        "error": "",
+        "filename": "",
+        "selected_type": "",
+        "selected_mentor": DEFAULT_MENTOR_ID,
+        "model_provider": os.getenv("MODEL_PROVIDER", "demo").strip().lower() or "demo",
+    }
+    defaults.update(prompt_library_context(default_clean_endpoint="home", **context))
+    defaults.update(context)
+    return render_template(
+        "index.html",
+        upload_types=UPLOAD_TYPES,
+        mentors=MENTORS,
+        reference_upload_groups=REFERENCE_UPLOAD_GROUPS,
+        supported_reference_extensions=", ".join(sorted(SUPPORTED_EXTENSIONS)),
+        render_prompt_preview=render_prompt_preview,
+        **defaults,
+    )
+
+
+def render_prompt_library(**context: Any):
+    defaults = prompt_library_context(
+        default_clean_endpoint="prompt_library",
+        **context,
+    )
     return render_template(
         "prompt_library.html",
         reference_upload_groups=REFERENCE_UPLOAD_GROUPS,
@@ -765,10 +818,10 @@ def generate_prompts():
         save_uploaded_reference_files(prompt_mentor["slug"])
         grouped_chunks = build_grouped_reference_chunks_from_mentor(prompt_mentor["slug"])
     except (OSError, ValueError) as exc:
-        return render_prompt_library(error=str(exc)), 400
+        return render_home(error=str(exc)), 400
 
     if not any(grouped_chunks.values()):
-        return render_prompt_library(
+        return render_home(
             error="Please upload at least one PI-style reference file.",
             selected_prompt_mentor=prompt_mentor["slug"],
         ), 400
@@ -807,7 +860,7 @@ def generate_prompts():
         )
     except OSError:
         app.logger.exception("Could not save generated PI-style prompts")
-        return render_prompt_library(
+        return render_home(
             error="The generated prompts could not be saved on this computer.",
             selected_prompt_mentor=prompt_mentor["slug"],
         ), 500
@@ -828,7 +881,7 @@ def generate_prompts():
     prompt_download_urls["all"] = f"/download/{run_id}/all_pi_style_prompts"
 
     response = Response(
-        render_prompt_library(
+        render_home(
             prompt_cards=prompt_cards,
             prompt_output_location=str(mentor_output_directory),
             prompt_run_location=str(get_output_dir() / run_id),
@@ -838,7 +891,7 @@ def generate_prompts():
             selected_prompt_mentor_profile=prompt_mentor,
             stored_prompt_files=stored_files_for_mentor(prompt_mentor["slug"]),
             prompt_clean_url=url_for(
-                "prompt_library",
+                "home",
                 prompt_mentor=prompt_mentor["slug"],
             ),
             reset_on_refresh=True,
@@ -858,6 +911,18 @@ def delete_mentor():
     except ValueError as exc:
         return render_prompt_library(error=str(exc)), 400
     return redirect(url_for("prompt_library"))
+
+
+@app.post("/delete-reference-file")
+def delete_reference_file():
+    selected_slug = request.form.get("selected_prompt_mentor", "").strip().lower()
+    selection = request.form.get("delete_reference_file", "")
+    try:
+        mode, filename = selection.split("|", 1)
+        delete_stored_reference_file(selected_slug, mode, filename)
+    except (ValueError, OSError):
+        return render_home(error=DELETE_REFERENCE_FILE_ERROR), 400
+    return redirect(url_for("home", prompt_mentor=mentor_slug(selected_slug)))
 
 
 @app.get("/download/<run_id>/<kind>")

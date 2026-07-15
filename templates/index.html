@@ -22,6 +22,8 @@
 
     {% if error %}<div class="notice error" role="alert"><strong>We need one change:</strong> {{ error }}</div>{% endif %}
 
+    {% include "_prompt_library_blocks.html" %}
+
     <section class="upload-section" id="upload" aria-labelledby="upload-title">
       <div class="section-heading">
         <div><h2 id="upload-title">What kind of feedback do you need?</h2><p>Choose a category so your mentor can focus on what matters most.</p></div>
@@ -36,26 +38,6 @@
           </a>
         {% endfor %}
       </div>
-
-      <section class="mentor-section" id="mentor" aria-labelledby="mentor-title">
-        <div class="mentor-heading">
-          <div><h2 id="mentor-title">Choose your mentor</h2><p>Select who should review your work.</p></div>
-          <span class="mentor-count">{{ mentors|length }} available</span>
-        </div>
-        <div class="mentor-grid" role="radiogroup" aria-label="Available feedback mentors">
-          {% for mentor_id, mentor in mentors.items() %}
-            <a class="mentor-card{% if selected_mentor == mentor_id %} selected{% endif %}" href="{{ url_for('home', type=selected_type, mentor=mentor_id) }}#mentor" role="radio" aria-checked="{% if selected_mentor == mentor_id %}true{% else %}false{% endif %}">
-              <span class="mentor-avatar" aria-hidden="true">{{ mentor.initials }}</span>
-              <span class="mentor-copy">
-                <span class="mentor-status"><i></i>{{ mentor.status }}</span>
-                <strong>{{ mentor.name }}</strong>
-                <small>{{ mentor.description }}</small>
-              </span>
-              <span class="mentor-selected" aria-hidden="true">&#10003;</span>
-            </a>
-          {% endfor %}
-        </div>
-      </section>
 
       {% if selected_type %}
         {% set selected = upload_types[selected_type] %}
@@ -95,5 +77,22 @@
 
     <footer><span>Promptly</span><p>Local-first Python mentor-feedback workspace.</p></footer>
   </main>
+  <script src="{{ url_for('static', filename='library_uploads.js') }}"></script>
+  {% if reset_on_refresh %}
+    <script>
+      (function () {
+        var libraryUrl = {{ prompt_clean_url|tojson }};
+        var navigation = performance.getEntriesByType && performance.getEntriesByType("navigation")[0];
+        var isReload = navigation ? navigation.type === "reload" : performance.navigation && performance.navigation.type === 1;
+        if (isReload) {
+          window.location.replace(libraryUrl);
+          return;
+        }
+        if (window.history && window.history.replaceState) {
+          window.history.replaceState(null, "", libraryUrl);
+        }
+      }());
+    </script>
+  {% endif %}
 </body>
 </html>

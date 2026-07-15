@@ -37,29 +37,47 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertIn(b"Papers &amp; proposals", response.data)
         self.assertIn(b"Research ideas", response.data)
         self.assertIn(b"Talks &amp; slides", response.data)
-        self.assertIn(b"Dr. Nanshu Lu", response.data)
         self.assertNotIn(b'name="file"', response.data)
 
-    def test_home_page_links_to_separate_pi_style_library(self):
+    def test_home_page_embeds_pi_style_library_workflow(self):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b'href="/prompt-library"', response.data)
-        self.assertIn(b"nav-link-boxed", response.data)
+        self.assertIn(b"Build your PI-style", response.data)
+        self.assertIn(b'name="research_files"', response.data)
+        self.assertIn(b'name="slide_files"', response.data)
+        self.assertIn(b'name="paper_files"', response.data)
+        self.assertIn(b"Generate reusable prompts", response.data)
+        self.assertIn(b"library_uploads.js", response.data)
         self.assertNotIn(b"Mentor data", response.data)
-        self.assertNotIn(b'name="research_files"', response.data)
-        self.assertNotIn(b"Build your PI-style prompt library", response.data)
 
         library_response = self.client.get("/prompt-library")
         self.assertEqual(library_response.status_code, 200)
         self.assertIn(b"Build your PI-style", library_response.data)
-        self.assertIn(b'name="research_files"', library_response.data)
-        self.assertIn(b'name="slide_files"', library_response.data)
-        self.assertIn(b'name="paper_files"', library_response.data)
-        self.assertIn(b"library_uploads.js", library_response.data)
         self.assertIn(b"Feedback workspace", library_response.data)
         self.assertIn(b"nav-link-boxed", library_response.data)
 
         self.assertEqual(self.client.get("/mentor-data").status_code, 404)
+
+    def test_prompt_generation_returns_home_page_with_ready_prompts(self):
+        response = self.client.post(
+            "/generate-prompts",
+            data={
+                "research_files": (
+                    BytesIO(
+                        b"Professor asks us to clarify the hypothesis, compare mechanisms, "
+                        b"and define the next experiment."
+                    ),
+                    "meeting-notes.txt",
+                )
+            },
+            content_type="multipart/form-data",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Promptly &mdash; Feedback workspace", response.data)
+        self.assertIn(b"PI-style prompts ready", response.data)
+        self.assertIn(b"Download TXT", response.data)
+        self.assertIn(b"What kind of feedback do you need?", response.data)
 
     def test_pi_style_library_generates_and_downloads_prompt(self):
         response = self.client.post(
@@ -120,6 +138,31 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn(b"not supported", response.data)
 
+    def test_existing_prompt_libraries_use_mentor_card_selector_on_home(self):
+        self.client.post(
+            "/generate-prompts",
+            data={
+                "prompt_mentor_name": "Card Mentor",
+                "research_files": (BytesIO(b"Ask why the mechanism is testable."), "card.txt"),
+            },
+            content_type="multipart/form-data",
+        )
+
+        response = self.client.get("/?prompt_mentor=card-mentor")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Choose your mentor", response.data)
+        self.assertIn(b"Card Mentor", response.data)
+        self.assertIn(b"PI-style library", response.data)
+        self.assertIn(b'class="mentor-card selected"', response.data)
+        self.assertIn(b'name="selected_prompt_mentor" value="card-mentor"', response.data)
+        self.assertNotIn(b"Select an existing library", response.data)
+        self.assertNotIn(b'<select name="selected_prompt_mentor"', response.data)
+        self.assertLess(
+            response.data.index(b"Choose your mentor"),
+            response.data.index(b"Upload examples by review category"),
+        )
+
     def test_named_prompt_library_persists_files_and_stable_prompts(self):
         response = self.client.post(
             "/generate-prompts",
@@ -143,6 +186,80 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertTrue((library / "all_pi_style_prompts.txt").is_file())
         self.assertIn(b"Dr. Custom Mentor", response.data)
         self.assertIn(b"meeting-notes.txt", response.data)
+
+    def test_generated_prompts_explain_stable_txt_files_are_updated(self):
+        response = self.client.post(
+            "/generate-prompts",
+            data={
+                "prompt_mentor_name": "Stable Mentor",
+                "research_files": (BytesIO(b"Clarify the central hypothesis."), "stable.txt"),
+            },
+            content_type="multipart/form-data",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Saved local TXT files to", response.data)
+        self.assertIn(b"Regenerating this same PI library and mode updates the existing TXT file", response.data)
+
+        stable_prompt = Path(app.config["MENTOR_LIBRARY_DIR"]) / "stable-mentor" / "meeting_research_pi" / "prompt.txt"
+        self.assertTrue(stable_prompt.is_file())
+        first_path = stable_prompt.resolve()
+        first_content = stable_prompt.read_text(encoding="utf-8")
+
+        self.client.post(
+            "/generate-prompts",
+            data={
+                "selected_prompt_mentor": "stable-mentor",
+                "research_files": (BytesIO(b"Define the next decisive control."), "stable.txt"),
+            },
+            content_type="multipart/form-data",
+        )
+
+        self.assertEqual(stable_prompt.resolve(), first_path)
+        self.assertNotEqual(stable_prompt.read_text(encoding="utf-8"), first_content)
+
+    def test_stored_reference_file_can_be_deleted_from_web(self):
+        self.client.post(
+            "/generate-prompts",
+            data={
+                "prompt_mentor_name": "File Delete Mentor",
+                "paper_files": (BytesIO(b"Tighten the proposal argument."), "delete-me.txt"),
+            },
+            content_type="multipart/form-data",
+        )
+        stored_file = Path(app.config["MENTOR_LIBRARY_DIR"]) / "file-delete-mentor" / "paper_proposal_pi" / "raw" / "delete-me.txt"
+        self.assertTrue(stored_file.is_file())
+
+        selected = self.client.get("/?prompt_mentor=file-delete-mentor")
+        self.assertEqual(selected.status_code, 200)
+        self.assertIn(b"delete-me.txt", selected.data)
+        self.assertIn(b'name="delete_reference_file" value="paper_proposal_pi|delete-me.txt"', selected.data)
+
+        deleted = self.client.post(
+            "/delete-reference-file",
+            data={
+                "selected_prompt_mentor": "file-delete-mentor",
+                "delete_reference_file": "paper_proposal_pi|delete-me.txt",
+            },
+            follow_redirects=True,
+        )
+
+        self.assertEqual(deleted.status_code, 200)
+        self.assertFalse(stored_file.exists())
+        self.assertNotIn(b"delete-me.txt", deleted.data)
+        self.assertIn(b"File Delete Mentor", deleted.data)
+
+    def test_delete_stored_reference_file_rejects_path_escape(self):
+        response = self.client.post(
+            "/delete-reference-file",
+            data={
+                "selected_prompt_mentor": "../outside",
+                "delete_reference_file": "paper_proposal_pi|../secret.txt",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(b"Please select an existing library file to delete", response.data)
 
     def test_existing_prompt_library_can_regenerate_without_new_uploads(self):
         self.client.post(
