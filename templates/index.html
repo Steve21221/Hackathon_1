@@ -11,13 +11,13 @@
   <main>
     <nav class="nav" aria-label="Main navigation">
       <a class="brand" href="{{ url_for('home') }}" aria-label="Promptly home"><span class="brand-mark">P</span><span>Promptly</span></a>
-      <span class="status"><i></i> Python &middot; OpenAI ready</span>
+      <span class="status"><i></i> Python &middot; {% if model_provider == 'ollama' %}local Ollama{% elif model_provider == 'openai' %}OpenAI{% else %}demo mode{% endif %}</span>
     </nav>
 
     <section class="hero">
       <div class="eyebrow"><span>&#10022;</span> Feedback, made useful</div>
       <h1><span>Bring your work.</span><em>Get thoughtful feedback.</em></h1>
-      <p class="intro">Choose what you want reviewed. Promptly extracts the text, applies your selected mentor&rsquo;s style prompt, and uses OpenAI to return focused, actionable feedback.</p>
+      <p class="intro">Choose what you want reviewed. Promptly extracts the text, applies your selected mentor&rsquo;s style prompt, and returns focused, actionable feedback.</p>
     </section>
 
     {% if error %}<div class="notice error" role="alert"><strong>We need one change:</strong> {{ error }}</div>{% endif %}
@@ -73,7 +73,7 @@
             <button type="submit">Get mentor feedback <span>&rarr;</span></button>
           </form>
         </article>
-        <p class="privacy-note">Files are not saved by this website. When OpenAI is configured, extracted content is sent to OpenAI for feedback. Maximum file size: 20 MB.</p>
+        <p class="privacy-note">Files are not saved by this website. {% if model_provider == 'ollama' %}With Ollama, extracted content stays on this computer.{% elif model_provider == 'openai' %}Extracted content is sent to OpenAI for feedback.{% else %}Demo mode makes no external model request.{% endif %} Maximum file size: 20 MB.</p>
       {% else %}
         <div class="choose-prompt"><span>&uarr;</span><p>Select a feedback category to continue.</p></div>
       {% endif %}
@@ -93,7 +93,7 @@
       </div>
     </section>
 
-    <footer><span>Promptly</span><p>Python mentor-feedback workspace powered by the OpenAI API.</p></footer>
+    <footer><span>Promptly</span><p>Local-first Python mentor-feedback workspace.</p></footer>
   </main>
 </body>
 </html>

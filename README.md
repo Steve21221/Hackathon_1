@@ -1,6 +1,6 @@
 # Promptly - Python local AI feedback website
 
-Promptly is a Python website for uploading work and receiving category-specific, mentor-style feedback from an OpenAI model. The interface uses HTML and CSS, and all application logic runs in Python with Flask. No client-side JavaScript is used.
+Promptly is a local-first Python website for uploading work and receiving category-specific, mentor-style feedback. It can use a DeepSeek reasoning model through Ollama entirely on the user's computer, with OpenAI available as an optional paid alternative. The interface uses HTML and CSS, and all application logic runs in Python with Flask. No client-side JavaScript is used.
 
 ## Supported files
 
@@ -22,7 +22,30 @@ The current general prompt is stored in `mentor_prompts/dr-nanshu-lu.txt`. It is
 
 ## Run it on Windows
 
-### First-time setup
+### Easy setup (recommended)
+
+The downloadable setup script installs Promptly in `%LOCALAPPDATA%\Promptly`, prepares its private Python environment, installs Ollama when needed, downloads the selected DeepSeek model, and creates a **Promptly** desktop shortcut.
+
+1. Download [`installer/Promptly-Setup.ps1`](installer/Promptly-Setup.ps1) from GitHub using the **Download raw file** button.
+2. Open PowerShell and run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Downloads\Promptly-Setup.ps1"
+```
+
+3. Choose a model based on the computer:
+
+   - DeepSeek R1 8B: approximately 5.2 GB; start here for a computer with 16 GB RAM.
+   - DeepSeek R1 14B: approximately 9 GB; recommended default for 32 GB RAM.
+   - DeepSeek R1 32B: approximately 20 GB; strongest offered setup option, recommended for 64 GB RAM.
+
+4. After setup, double-click **Promptly** on the desktop. Keep the opened command window running while using the website; close it or press `Ctrl+C` to stop Promptly.
+
+The setup needs internet access to download the code, Python packages, Ollama, and the model. After installation, feedback generation runs locally without an API key or per-token fee.
+
+### Manual setup
+
+#### First-time setup
 
 1. Install [Python 3.11 or newer](https://www.python.org/downloads/). During installation, select **Add Python to PATH**.
 2. Install [Git for Windows](https://git-scm.com/downloads/win) if it is not already installed.
@@ -76,7 +99,7 @@ py -m venv .venv
 9. Keep PowerShell open and visit <http://127.0.0.1:5000> or <http://localhost:5000> in your browser.
 10. When you are finished, return to PowerShell and press `Ctrl+C` to stop the website.
 
-### Run it again later
+#### Run it again later
 
 You only need to create the environment and install packages once. On later visits, open PowerShell and run:
 
@@ -89,9 +112,29 @@ Replace `C:\path\to\Hackathon_1` with the actual project location on that comput
 
 If PowerShell says that `py`, `git`, or `.\.venv\Scripts\python.exe` is not recognized, confirm that the required software is installed, reopen PowerShell, and verify that you are inside the `Hackathon_1` folder.
 
-The website works in demo mode without an OpenAI API key.
+Without a `.env` file, the website works in demo mode and makes no model request.
 
-## Connect OpenAI
+## Run a local reasoning model with Ollama
+
+The recommended local provider is Ollama with DeepSeek R1. Copy `.env.example` to `.env`, then use:
+
+```text
+MODEL_PROVIDER=ollama
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=deepseek-r1:14b
+```
+
+The application sends the mentor instructions and extracted file text to Ollama's local API. Thinking mode is enabled so the model can reason before answering, but only the final feedback is displayed. The request uses a 32,768-token working context and limits the final response to 2,000 tokens.
+
+Ollama and the selected model must be installed and running. To install the default model manually:
+
+```powershell
+ollama pull deepseek-r1:14b
+```
+
+No content is sent to OpenAI when `MODEL_PROVIDER=ollama`.
+
+## Optional: connect OpenAI
 
 This integration uses the OpenAI API. A ChatGPT subscription is separate from API usage, and API calls may cost money.
 
@@ -106,6 +149,7 @@ Copy-Item .env.example .env
 4. Keep the cost-conscious default model or change it as a team decision:
 
 ```text
+MODEL_PROVIDER=openai
 OPENAI_API_KEY=your-private-key-here
 OPENAI_MODEL=gpt-5-mini
 ```
@@ -126,16 +170,10 @@ The prompt contributor does not need to edit the Flask routes or file extraction
 
 ## How feedback is generated
 
-Promptly extracts the uploaded file's text, identifies the selected feedback category, includes the optional focus, and calls the OpenAI Responses API with:
+Promptly extracts the uploaded file's text, identifies the selected feedback category, includes the optional focus, and combines it with the mentor prompt. It then sends that request to the provider selected in `.env`:
 
-```python
-client.responses.create(
-    model="gpt-5-mini",
-    instructions="Base safety rules plus the selected mentor style prompt",
-    input="Category guidance, filename, requested focus, and extracted content",
-    max_output_tokens=2000,
-    store=False,
-)
-```
+- `ollama`: a local DeepSeek reasoning model; no API key or per-token charge.
+- `openai`: the OpenAI Responses API; requires an API key and incurs API usage charges.
+- `demo`: no model request; returns a local confirmation message.
 
-The API key stays on the Python server and is never sent to the browser. The generated text is returned to the Mentor feedback panel.
+Secrets stay on the Python server and are never sent to the browser. The generated final answer is returned to the Mentor feedback panel.

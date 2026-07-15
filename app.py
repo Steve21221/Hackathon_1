@@ -10,6 +10,7 @@ from flask import Flask, jsonify, render_template, request
 from openai import OpenAI, OpenAIError
 from pptx import Presentation
 from pypdf import PdfReader
+import requests
 
 load_dotenv()
 
@@ -107,13 +108,13 @@ def call_model(
     demo_feedback: str | None = None,
     mentor_id: str | None = None,
 ) -> str:
-    """Send a prompt to OpenAI, or return local demo feedback without a key."""
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    if not api_key:
+    """Send a prompt to the selected provider, or return local demo feedback."""
+    provider = os.getenv("MODEL_PROVIDER", "").strip().lower()
+    if not provider or provider == "demo":
         time.sleep(0.4)
         return demo_feedback or (
-            "This is a demo response. Your Python website is working. Add the "
-            "OpenAI API key to .env as OPENAI_API_KEY to generate mentor feedback."
+            "This is a demo response. Your Python website is working. Configure "
+            "MODEL_PROVIDER in .env to generate mentor feedback."
         )
     if mentor_id not in MENTORS:
         raise ValueError("Please choose an available mentor.")
@@ -124,6 +125,49 @@ def call_model(
         f"Selected mentor: {MENTORS[mentor_id]['name']}\n"
         f"Mentor style profile:\n{mentor_prompt}"
     )
+
+    if provider == "ollama":
+        return call_ollama(instructions, prompt)
+    if provider == "openai":
+        return call_openai(instructions, prompt)
+    raise ValueError("MODEL_PROVIDER must be demo, ollama, or openai.")
+
+
+def call_ollama(instructions: str, prompt: str) -> str:
+    """Generate local feedback with a thinking-capable model served by Ollama."""
+    base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
+    model = os.getenv("OLLAMA_MODEL", "deepseek-r1:14b").strip() or "deepseek-r1:14b"
+    response = requests.post(
+        f"{base_url}/api/chat",
+        json={
+            "model": model,
+            "messages": [
+                {"role": "system", "content": instructions},
+                {"role": "user", "content": prompt},
+            ],
+            "think": True,
+            "stream": False,
+            "options": {
+                "temperature": 0.2,
+                "num_ctx": 32_768,
+                "num_predict": 2_000,
+            },
+        },
+        timeout=600,
+    )
+    response.raise_for_status()
+    data = response.json()
+    output = data.get("message", {}).get("content", "").strip()
+    if not output:
+        raise ValueError("Ollama returned an empty response.")
+    return output
+
+
+def call_openai(instructions: str, prompt: str) -> str:
+    """Generate feedback with the configured OpenAI model."""
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        raise ValueError("OPENAI_API_KEY is missing from .env.")
     client = OpenAI(api_key=api_key, timeout=60.0)
     response = client.responses.create(
         model=os.getenv("OPENAI_MODEL", "gpt-5-mini").strip() or "gpt-5-mini",
@@ -232,6 +276,7 @@ def render_home(**context: Any):
         "filename": "",
         "selected_type": "",
         "selected_mentor": DEFAULT_MENTOR_ID,
+        "model_provider": os.getenv("MODEL_PROVIDER", "demo").strip().lower() or "demo",
     }
     defaults.update(context)
     return render_template(
@@ -283,8 +328,8 @@ def feedback():
         demo_feedback = (
             f"Demo feedback from {MENTORS[mentor_id]['name']} for {filename}\n\n"
             f"Your {UPLOAD_TYPES[kind]['label'].lower()} was uploaded and read successfully "
-            f"({len(content):,} characters extracted). Add OPENAI_API_KEY to your .env file "
-            "to replace this message with OpenAI-generated mentor feedback."
+            f"({len(content):,} characters extracted). Configure MODEL_PROVIDER in your "
+            ".env file to replace this message with model-generated mentor feedback."
         )
         output = call_model(prompt, demo_feedback, mentor_id)
         return render_home(
@@ -293,9 +338,14 @@ def feedback():
             selected_type=kind,
             selected_mentor=mentor_id,
         )
-    except (OSError, ValueError, OpenAIError) as exc:
+    except (OSError, ValueError, OpenAIError, requests.RequestException) as exc:
         app.logger.exception("Feedback generation failed: %s", exc)
-        message = str(exc) if isinstance(exc, ValueError) else "We couldn't reach OpenAI. Check the API key and internet connection."
+        if isinstance(exc, ValueError):
+            message = str(exc)
+        elif os.getenv("MODEL_PROVIDER", "").strip().lower() == "ollama":
+            message = "We couldn't reach Ollama. Check that Ollama is running and the model is installed."
+        else:
+            message = "We couldn't reach OpenAI. Check the API key and internet connection."
         return render_home(
             error=message,
             filename=filename,
@@ -324,9 +374,9 @@ def api_generate():
         return jsonify({"error": "Please choose an available mentor."}), 400
     try:
         return jsonify({"output": call_model(prompt, mentor_id=mentor_id)})
-    except (OpenAIError, ValueError) as exc:
+    except (OpenAIError, ValueError, requests.RequestException) as exc:
         app.logger.exception("Model request failed: %s", exc)
-        return jsonify({"error": "We couldn't reach OpenAI."}), 502
+        return jsonify({"error": "We couldn't reach the configured model."}), 502
 
 
 if __name__ == "__main__":

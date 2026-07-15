@@ -11,6 +11,7 @@ from pptx import Presentation
 
 class PromptlyTestCase(unittest.TestCase):
     def setUp(self):
+        os.environ.pop("MODEL_PROVIDER", None)
         os.environ.pop("OPENAI_API_KEY", None)
         os.environ.pop("OPENAI_MODEL", None)
         app.config.update(TESTING=True)
@@ -84,6 +85,7 @@ class PromptlyTestCase(unittest.TestCase):
 
     @patch("app.OpenAI")
     def test_openai_receives_mentor_profile_and_review(self, mock_openai):
+        os.environ["MODEL_PROVIDER"] = "openai"
         os.environ["OPENAI_API_KEY"] = "test-key"
         mock_openai.return_value.responses.create.return_value = SimpleNamespace(
             output_text="Focused mentor feedback"
@@ -101,6 +103,29 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertIn("rigorous, supportive", request["instructions"])
         self.assertIn("A testable idea", request["input"])
         self.assertFalse(request["store"])
+
+    @patch("app.requests.post")
+    def test_ollama_receives_thinking_prompt_locally(self, mock_post):
+        os.environ["MODEL_PROVIDER"] = "ollama"
+        os.environ["OLLAMA_MODEL"] = "deepseek-r1:14b"
+        mock_post.return_value.json.return_value = {
+            "message": {"content": "Critical local feedback", "thinking": "hidden reasoning"}
+        }
+
+        result = call_model(
+            "Review category: Research ideas\nContent: A testable idea.",
+            mentor_id="dr-nanshu-lu",
+        )
+
+        self.assertEqual(result, "Critical local feedback")
+        request = mock_post.call_args
+        self.assertEqual(request.args[0], "http://127.0.0.1:11434/api/chat")
+        payload = request.kwargs["json"]
+        self.assertEqual(payload["model"], "deepseek-r1:14b")
+        self.assertTrue(payload["think"])
+        self.assertFalse(payload["stream"])
+        self.assertIn("Dr. Nanshu Lu", payload["messages"][0]["content"])
+        self.assertIn("A testable idea", payload["messages"][1]["content"])
 
     def test_word_document_upload_is_read(self):
         file_data = BytesIO()
