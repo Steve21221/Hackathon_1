@@ -206,4 +206,3 @@ def test_prompt_builder_writes_polished_prompt_without_filler_or_fragments():
     assert "controls" in generated
     assert "falsifiable" in generated
     assert "Use the professor's style" in generated
-

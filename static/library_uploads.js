@@ -53,8 +53,7 @@
       var form = select.closest('form');
       if (!form) return;
       var button = form.querySelector('[data-delete-mentor-button]');
-      if (!button) return;
-      button.hidden = !select.value;
+      if (button) button.hidden = !select.value;
     }
 
     function clearStoredFileDisplays(form) {
@@ -69,14 +68,14 @@
       toggleMentorCreator(select);
       toggleDeleteMentorButton(select);
       var form = select.closest('form');
+      var libraryUrl = select.getAttribute('data-mentor-home-url') || '/prompt-library';
       if (select.value) {
-        var homeUrl = select.getAttribute('data-mentor-home-url') || '/';
-        window.location.assign(homeUrl + '?prompt_mentor=' + encodeURIComponent(select.value) + '#prompt-library');
+        window.location.assign(libraryUrl + '?prompt_mentor=' + encodeURIComponent(select.value));
         return;
       }
       clearStoredFileDisplays(form);
       if (window.history && window.history.replaceState) {
-        window.history.replaceState(null, '', (select.getAttribute('data-mentor-home-url') || '/') + '#prompt-library');
+        window.history.replaceState(null, '', libraryUrl);
       }
     }
 

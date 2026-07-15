@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -11,183 +11,89 @@
   <main>
     <nav class="nav" aria-label="Main navigation">
       <a class="brand" href="{{ url_for('home') }}" aria-label="Promptly home"><span class="brand-mark">P</span><span>Promptly</span></a>
-      <span class="status"><i></i> Python &middot; local mode</span>
+      <div class="nav-actions"><a class="nav-link nav-link-boxed" href="{{ url_for('prompt_library') }}">Build prompt library <span>&rarr;</span></a><span class="status"><i></i> Python &middot; {% if model_provider == 'ollama' %}local Ollama{% elif model_provider == 'openai' %}OpenAI{% elif model_provider in ['claude', 'anthropic'] %}Claude{% else %}demo mode{% endif %}</span></div>
     </nav>
 
     <section class="hero">
       <div class="eyebrow"><span>&#10022;</span> Feedback, made useful</div>
-      <h1>Bring your work.<br><em>Get thoughtful feedback.</em></h1>
-      <p class="intro">Choose what you want reviewed. Promptly reads the file locally, sends its text to your configured model, and returns mentor-style feedback.</p>
+      <h1><span>Bring your work.</span><em>Get thoughtful feedback.</em></h1>
+      <p class="intro">Choose what you want reviewed. Promptly extracts the text, applies your selected mentor&rsquo;s style prompt, and returns focused, actionable feedback.</p>
     </section>
 
     {% if error %}<div class="notice error" role="alert"><strong>We need one change:</strong> {{ error }}</div>{% endif %}
 
-    <section class="upload-section prompt-library-section" id="prompt-library" aria-labelledby="prompt-library-title">
-      <div class="section-heading">
-        <div>
-          <h2 id="prompt-library-title">Build Your PI Style Library</h2>
-          <p>Upload your existing raw materials. Hackathon extracts PI-style patterns and saves three local prompt TXT files.</p>
-        </div>
-      </div>
-
-      <form method="post" action="{{ url_for('generate_prompts') }}" enctype="multipart/form-data" class="prompt-library-form">
-        <div class="mentor-library-manager" aria-label="PI style mentor library manager">
-          <div class="mentor-selector">
-            <label>Select existing mentor
-              <select name="selected_prompt_mentor" data-selected-mentor data-mentor-home-url="{{ url_for('home') }}">
-                <option value="">No mentor selected</option>
-                {% for mentor in prompt_mentors %}
-                  <option value="{{ mentor.slug }}" {% if mentor.slug == selected_prompt_mentor %}selected{% endif %}>{{ mentor.name }}</option>
-                {% endfor %}
-              </select>
-            </label>
-            <button
-              class="delete-mentor-button"
-              type="submit"
-              formaction="{{ url_for('delete_mentor') }}"
-              formmethod="post"
-              formnovalidate
-              data-delete-mentor-button
-              {% if not selected_prompt_mentor %}hidden{% endif %}
-            >Delete mentor</button>
-          </div>
-          <div class="mentor-creator" data-mentor-creator {% if selected_prompt_mentor %}hidden{% endif %}>
-            <label>Create Your Mentor
-              <input type="text" name="prompt_mentor_name" maxlength="80" placeholder="e.g. Lab Mentor">
-            </label>
-          </div>
-          <p class="mentor-library-note">
-            {% if selected_prompt_mentor_profile %}
-              Active mentor: <strong>{{ selected_prompt_mentor_profile.name }}</strong>. Prompt files update in this mentor folder each time you generate.
-            {% else %}
-              Create a mentor or select an existing one. Prompt files update in this mentor folder each time you generate.
-            {% endif %}
-          </p>
-        </div>
-
-        <div class="reference-choices" aria-label="Reference raw material categories">
-          {% for mode, group in reference_upload_groups.items() %}
-            <label class="reference-choice">
-              <span class="choice-icon" aria-hidden="true">{{ group.label[0] }}</span>
-              <span class="choice-copy"><strong>{{ group.label }}</strong><small>{{ group.description }}</small></span>
-              <input class="visually-hidden-file" id="{{ group.field }}" type="file" name="{{ group.field }}" accept=".pdf,.docx,.pptx,.txt,.md" multiple>
-              <span class="upload-row"><span class="upload-pill">Upload files</span></span>
-              <span class="selected-files" aria-live="polite">
-                <span class="selected-summary"><span class="selected-check" aria-hidden="true">&#10003;</span><span data-file-summary>No files selected yet</span></span>
-                <span class="selected-file-list" data-file-list></span>
-                {% if stored_prompt_files[mode] %}
-                  <span class="stored-file-list">
-                    {% for filename in stored_prompt_files[mode] %}
-                      <span class="selected-file-name stored-file-name">{{ filename }}</span>
-                    {% endfor %}
-                  </span>
-                {% endif %}
-              </span>
-            </label>
-          {% endfor %}
-        </div>
-
-        <p class="privacy-note">Supported: {{ supported_extensions }}. Prompt files are saved locally as TXT files.</p>
-        <button type="submit" class="primary-action">Generate PI-Style Prompts <span>&rarr;</span></button>
-      </form>
-    </section>
-
-    {% if prompt_cards %}
-      <section class="feedback-section prompt-output-section" aria-labelledby="prompt-output-title">
-        <div class="section-heading">
-          <div>
-            <h2 id="prompt-output-title">{{ prompt_message }}</h2>
-            <p>Three concise prompts, one for each uploaded reference category.</p>
-            {% if prompt_output_location %}
-              <p class="local-output-note">TXT files saved locally in <code>{{ prompt_output_location }}</code>. TXT files updated locally in this mentor folder each time you generate.{% if prompt_run_location %} Run copy: <code>{{ prompt_run_location }}</code>.{% endif %}</p>
-            {% endif %}
-          </div>
-        </div>
-
-        <div class="prompt-grid">
-          {% for card in prompt_cards %}
-            <article class="prompt-card compact-prompt-card">
-              <span class="prompt-card-kicker">Generated prompt</span>
-              <h3>{{ card.label }}</h3>
-              <p>{{ render_prompt_preview(card.preview) }}</p>
-            </article>
-          {% endfor %}
-        </div>
-      </section>
-    {% endif %}
-
     <section class="upload-section" id="upload" aria-labelledby="upload-title">
       <div class="section-heading">
-        <div><h2 id="upload-title">Choose what you want reviewed</h2><p>Each option uses the same secure local upload flow, then asks the selected mentor for feedback.</p></div>
+        <div><h2 id="upload-title">What kind of feedback do you need?</h2><p>Choose a category so your mentor can focus on what matters most.</p></div>
       </div>
 
       <div class="type-choices" aria-label="Content type choices">
         {% for type_key, type_info in upload_types.items() %}
-          <a class="type-choice {{ type_key }}-choice{% if selected_type == type_key %} selected{% endif %}" href="{{ url_for('home', type=type_key) }}#upload">
+          <a class="type-choice {{ type_key }}-choice{% if selected_type == type_key %} selected{% endif %}" href="{{ url_for('home', type=type_key, mentor=selected_mentor) }}#upload"{% if selected_type == type_key %} aria-current="true"{% endif %}>
             <span class="choice-icon" aria-hidden="true">{{ type_info.label[0] }}</span>
-            <span class="choice-copy"><strong>{{ type_info.label }}</strong><small>{{ type_info.description }}</small></span>
-            <span class="choice-formats">{{ type_info.formats }}</span>
-            <span class="choice-check" aria-hidden="true">&#10003;</span>
+            <span class="choice-copy"><strong>{{ type_info.label }}</strong><small>{{ type_info.formats }}</small></span>
+            <span class="choice-check" aria-hidden="true">{% if selected_type == type_key %}&#10003;{% else %}&rarr;{% endif %}</span>
           </a>
         {% endfor %}
       </div>
+
+      <section class="mentor-section" id="mentor" aria-labelledby="mentor-title">
+        <div class="mentor-heading">
+          <div><h2 id="mentor-title">Choose your mentor</h2><p>Select who should review your work.</p></div>
+          <span class="mentor-count">{{ mentors|length }} available</span>
+        </div>
+        <div class="mentor-grid" role="radiogroup" aria-label="Available feedback mentors">
+          {% for mentor_id, mentor in mentors.items() %}
+            <a class="mentor-card{% if selected_mentor == mentor_id %} selected{% endif %}" href="{{ url_for('home', type=selected_type, mentor=mentor_id) }}#mentor" role="radio" aria-checked="{% if selected_mentor == mentor_id %}true{% else %}false{% endif %}">
+              <span class="mentor-avatar" aria-hidden="true">{{ mentor.initials }}</span>
+              <span class="mentor-copy">
+                <span class="mentor-status"><i></i>{{ mentor.status }}</span>
+                <strong>{{ mentor.name }}</strong>
+                <small>{{ mentor.description }}</small>
+              </span>
+              <span class="mentor-selected" aria-hidden="true">&#10003;</span>
+            </a>
+          {% endfor %}
+        </div>
+      </section>
 
       {% if selected_type %}
         {% set selected = upload_types[selected_type] %}
         <article class="active-upload {{ selected_type }}-upload">
           <div class="active-upload-copy">
             <span class="file-badge">{{ selected.formats }}</span>
-            <h3>Upload your {{ selected.label|lower }}</h3>
-            <p>The file is read locally and converted to text before feedback is generated. Files are not stored.</p>
+            <h3>Upload your {{ selected.upload_label }}</h3>
+            <p>{{ selected.description }}</p>
           </div>
           <form method="post" action="{{ url_for('feedback') }}" enctype="multipart/form-data">
             <input type="hidden" name="content_type" value="{{ selected_type }}">
             <input type="hidden" name="mentor_id" value="{{ selected_mentor }}">
-            <label class="file-picker"><span>Choose a {{ selected.label|lower }}</span><input type="file" name="file" accept="{{ selected.accept }}" required></label>
-            <label class="focus-label">Optional feedback focus<input type="text" name="focus" maxlength="200" placeholder="{{ selected.focus }}"></label>
-            <button type="submit">Get {{ selected.label|lower }} feedback <span>&rarr;</span></button>
+            <label class="file-picker"><span>Choose a {{ selected.upload_label }}</span><input type="file" name="file" accept="{{ selected.accept }}" required></label>
+            <label class="focus-label">Optional feedback focus<input type="text" name="focus" maxlength="500" placeholder="{{ selected.focus }}"></label>
+            <button type="submit">Get mentor feedback <span>&rarr;</span></button>
           </form>
         </article>
+        <p class="privacy-note">Files are not saved by this website. {% if model_provider == 'ollama' %}With Ollama, extracted content stays on this computer.{% elif model_provider == 'openai' %}Extracted content is sent to OpenAI for feedback.{% elif model_provider in ['claude', 'anthropic'] %}Extracted content is sent to Anthropic Claude for feedback.{% else %}Demo mode makes no external model request.{% endif %} Maximum file size: 20 MB.</p>
       {% else %}
-        <div class="choose-prompt"><span>&uarr;</span><p>Select one of the three types to continue.</p></div>
+        <div class="choose-prompt"><span>&uarr;</span><p>Select a feedback category to continue.</p></div>
       {% endif %}
     </section>
 
     <section class="feedback-section" aria-labelledby="feedback-title">
       <div class="section-heading">
-        <div><h2 id="feedback-title">Mentor feedback</h2><p>{% if filename %}Reviewing {{ filename }}{% else %}Results will appear here after upload.{% endif %}</p></div>
+        <div><h2 id="feedback-title">Mentor feedback</h2><p>{% if filename %}Reviewing {{ filename }}{% else %}Your feedback will appear here after an upload.{% endif %}</p></div>
       </div>
       <div class="feedback-panel" aria-live="polite">
-        {% if feedback %}
+        {% if output %}
           <div class="feedback-meta"><span>Feedback from {{ mentors[selected_mentor].name }}</span><span>{{ filename }}</span></div>
-          <pre>{{ feedback }}</pre>
+          <p class="answer">{{ output }}</p>
         {% else %}
-          <div class="empty-state"><div class="spark">&#10022;</div><p>Ready when you are.</p><span>Choose a type, choose a mentor, then upload a file.</span></div>
+          <div class="empty-state"><div class="spark">&#10022;</div><p>Ready when you are.</p><span>Choose a feedback category above.</span></div>
         {% endif %}
       </div>
     </section>
 
-    <footer><span>Promptly</span><p>Local Python feedback workspace. Uploaded files are not stored.</p></footer>
+    <footer><span>Promptly</span><p>Local-first Python mentor-feedback workspace.</p></footer>
   </main>
-  <script src="{{ url_for('static', filename='library_uploads.js') }}"></script>
-  {% if reset_on_refresh %}
-    <script>
-      (function () {
-        var homeUrl = "{{ url_for('home') }}";
-        var cleanUrl = "{{ prompt_clean_url }}";
-        var navigation = performance.getEntriesByType && performance.getEntriesByType("navigation")[0];
-        var isReload = navigation ? navigation.type === "reload" : performance.navigation && performance.navigation.type === 1;
-        if (isReload) {
-          var promptOutput = document.querySelector('.prompt-output-section');
-          if (promptOutput) {
-            promptOutput.remove();
-          }
-        }
-        if (window.history && window.history.replaceState) {
-          window.history.replaceState(null, "", cleanUrl || homeUrl);
-        }
-      }());
-    </script>
-  {% endif %}
 </body>
 </html>

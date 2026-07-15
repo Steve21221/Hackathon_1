@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Build reusable PI-style review prompts from local reference files.">
+  <title>Promptly &mdash; PI-style prompt library</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <main>
+    <nav class="nav" aria-label="Main navigation">
+      <a class="brand" href="{{ url_for('home') }}" aria-label="Promptly home"><span class="brand-mark">P</span><span>Promptly</span></a>
+      <div class="nav-actions">
+        <a class="nav-link nav-link-boxed" href="{{ url_for('home') }}"><span>&larr;</span> Feedback workspace</a>
+        <span class="status"><i></i>{% if model_provider == 'ollama' %}Local Qwen extraction{% elif model_provider == 'openai' %}OpenAI extraction{% elif model_provider in ['claude', 'anthropic'] %}Claude extraction{% else %}Local extraction{% endif %}</span>
+      </div>
+    </nav>
+
+    <section class="data-hero prompt-library-hero">
+      <div class="eyebrow"><span>&#10022;</span> Learn a review style</div>
+      <h1>Build your PI-style<br><em>prompt library.</em></h1>
+      <p class="intro">Upload prior comments, meeting notes, slides, or manuscript feedback. Promptly extracts reusable review patterns and turns them into prompt files for future work.</p>
+    </section>
+
+    {% if error %}<div class="notice error" role="alert"><strong>We need one change:</strong> {{ error }}</div>{% endif %}
+
+    <section class="upload-section prompt-library-section" aria-labelledby="prompt-library-title">
+      <div class="section-heading library-heading">
+        <div>
+          <span class="section-kicker">Reference materials</span>
+          <h2 id="prompt-library-title">Upload examples by review category</h2>
+          <p>Choose one or more categories. Each category produces its own reusable prompt.</p>
+        </div>
+        <span class="local-badge">{% if model_provider == 'ollama' %}Local Qwen extraction{% elif model_provider == 'openai' %}OpenAI extraction{% elif model_provider in ['claude', 'anthropic'] %}Claude extraction{% else %}Deterministic local extraction{% endif %}</span>
+      </div>
+
+      <form method="post" action="{{ url_for('generate_prompts') }}" enctype="multipart/form-data" class="prompt-library-form">
+        <div class="mentor-library-manager" aria-label="PI-style prompt library manager">
+          <div class="mentor-selector">
+            <label>Select an existing library
+              <select name="selected_prompt_mentor" data-selected-mentor data-mentor-home-url="{{ url_for('prompt_library') }}">
+                <option value="">No library selected</option>
+                {% for mentor in prompt_mentors %}
+                  <option value="{{ mentor.slug }}" {% if mentor.slug == selected_prompt_mentor %}selected{% endif %}>{{ mentor.name }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <button
+              class="delete-mentor-button"
+              type="submit"
+              formaction="{{ url_for('delete_mentor') }}"
+              formmethod="post"
+              formnovalidate
+              data-delete-mentor-button
+              {% if not selected_prompt_mentor %}hidden{% endif %}
+            >Delete library</button>
+          </div>
+          <div class="mentor-creator" data-mentor-creator {% if selected_prompt_mentor %}hidden{% endif %}>
+            <label>Create a prompt library
+              <input type="text" name="prompt_mentor_name" maxlength="80" placeholder="e.g. Lab mentor">
+            </label>
+          </div>
+          <p class="mentor-library-note">
+            {% if selected_prompt_mentor_profile %}
+              Active library: <strong>{{ selected_prompt_mentor_profile.name }}</strong>. Uploads accumulate here and prompt TXT files update each time you generate.
+            {% else %}
+              Create a named library or select an existing one. Its reference files and generated prompts stay together on this computer.
+            {% endif %}
+          </p>
+        </div>
+
+        <div class="reference-choices" aria-label="PI-style reference categories">
+          {% for mode, group in reference_upload_groups.items() %}
+            <label class="reference-choice">
+              <span class="choice-icon" aria-hidden="true">{{ group.label[0] }}</span>
+              <span class="choice-copy"><strong>{{ group.label }}</strong><small>{{ group.description }}</small></span>
+              <input class="visually-hidden-file" id="{{ group.field }}" type="file" name="{{ group.field }}" accept=".pdf,.docx,.pptx,.txt,.md" multiple>
+              <span class="upload-row"><span class="upload-pill">Choose reference files</span></span>
+              <span class="selected-files" aria-live="polite">
+                <span class="selected-summary"><span class="selected-check" aria-hidden="true">&#10003;</span><span data-file-summary>No files selected</span></span>
+                <span class="selected-file-list" data-file-list></span>
+                {% if stored_prompt_files[mode] %}
+                  <span class="stored-file-list" aria-label="Files already stored in this library">
+                    {% for filename in stored_prompt_files[mode] %}
+                      <span class="selected-file-name stored-file-name">{{ filename }}</span>
+                    {% endfor %}
+                  </span>
+                {% endif %}
+              </span>
+            </label>
+          {% endfor %}
+        </div>
+        <p class="privacy-note">Supported: {{ supported_reference_extensions }}. Reference files and stable generated TXT prompts are stored only in the selected local library; each run also creates a downloadable copy under <code>outputs</code>.</p>
+        <button type="submit" class="primary-button prompt-generate-button">Generate reusable prompts <span>&rarr;</span></button>
+      </form>
+    </section>
+
+    {% if prompt_cards %}
+      <section class="feedback-section prompt-output-section" aria-labelledby="prompt-output-title">
+        <div class="section-heading prompt-result-heading">
+          <div>
+            <span class="section-kicker">Extraction complete</span>
+            <h2 id="prompt-output-title">{{ prompt_message }}</h2>
+            <p>Review the reusable prompt for each uploaded category, then download it as a TXT file.</p>
+          </div>
+          <a class="download-all-link" href="{{ prompt_download_urls.all }}">Download all prompts</a>
+        </div>
+        <div class="prompt-grid">
+          {% for card in prompt_cards %}
+            <article class="prompt-card">
+              <span class="prompt-card-kicker">Reusable prompt</span>
+              <h3>{{ card.label }}</h3>
+              <p>{{ render_prompt_preview(card.preview) }}</p>
+              <a class="prompt-download-link" href="{{ prompt_download_urls[card.mode] }}">Download TXT <span>&darr;</span></a>
+            </article>
+          {% endfor %}
+        </div>
+        <p class="local-output-note">Library prompts updated in <code>{{ prompt_output_location }}</code>.{% if prompt_run_location %} Downloadable run copy: <code>{{ prompt_run_location }}</code>.{% endif %}</p>
+      </section>
+    {% endif %}
+
+    <footer><span>Promptly</span><p>Local-first PI-style prompt workspace.</p></footer>
+  </main>
+  <script src="{{ url_for('static', filename='library_uploads.js') }}"></script>
+  {% if reset_on_refresh %}
+    <script>
+      (function () {
+        var libraryUrl = {{ prompt_clean_url|tojson }};
+        var navigation = performance.getEntriesByType && performance.getEntriesByType("navigation")[0];
+        var isReload = navigation ? navigation.type === "reload" : performance.navigation && performance.navigation.type === 1;
+        if (isReload) {
+          window.location.replace(libraryUrl);
+          return;
+        }
+        if (window.history && window.history.replaceState) {
+          window.history.replaceState(null, "", libraryUrl);
+        }
+      }());
+    </script>
+  {% endif %}
+</body>
+</html>

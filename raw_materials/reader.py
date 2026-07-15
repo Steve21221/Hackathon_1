@@ -76,6 +76,12 @@ def extract_pptx(file_bytes: bytes) -> str:
                     cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
                     if cells:
                         slide_parts.append(" | ".join(cells))
+        try:
+            notes = slide.notes_slide.notes_text_frame.text.strip()
+            if notes:
+                slide_parts.append(f"Speaker notes: {notes}")
+        except (AttributeError, ValueError):
+            pass
         if slide_parts:
             sections.append(f"[Slide {slide_number}]\n" + "\n".join(slide_parts))
     return "\n\n".join(sections)
