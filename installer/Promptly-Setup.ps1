@@ -1,9 +1,10 @@
 param(
-    [string]$InstallDirectory = "$env:LOCALAPPDATA\Promptly"
+    [string]$InstallDirectory = "$env:LOCALAPPDATA\Promptly",
+    [string]$RepositoryBranch = "agent/connect-openai-mentor-feedback"
 )
 
 $ErrorActionPreference = "Stop"
-$RepositoryArchive = "https://github.com/Steve21221/Hackathon_1/archive/refs/heads/main.zip"
+$RepositoryArchive = "https://github.com/Steve21221/Hackathon_1/archive/refs/heads/$RepositoryBranch.zip"
 $OllamaInstallerUrl = "https://ollama.com/download/OllamaSetup.exe"
 
 function Write-Step([string]$Message) {
