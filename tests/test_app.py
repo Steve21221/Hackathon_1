@@ -1,6 +1,9 @@
+import json
 import os
+import tempfile
 import unittest
 from io import BytesIO
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -15,7 +18,14 @@ class PromptlyTestCase(unittest.TestCase):
         os.environ.pop("OPENAI_API_KEY", None)
         os.environ.pop("OPENAI_MODEL", None)
         app.config.update(TESTING=True)
+        self.original_source_directory = app.config["MENTOR_SOURCE_DIRECTORY"]
+        self.source_temp = tempfile.TemporaryDirectory()
+        app.config["MENTOR_SOURCE_DIRECTORY"] = Path(self.source_temp.name) / "Source_Documents"
         self.client = app.test_client()
+
+    def tearDown(self):
+        app.config["MENTOR_SOURCE_DIRECTORY"] = self.original_source_directory
+        self.source_temp.cleanup()
 
     def test_home_page_has_three_feedback_categories(self):
         response = self.client.get("/")
@@ -82,6 +92,54 @@ class PromptlyTestCase(unittest.TestCase):
     def test_mentor_style_prompt_is_available(self):
         prompt = load_mentor_prompt("dr-nanshu-lu")
         self.assertIn("research mentor", prompt)
+
+    def test_mentor_data_page_is_separate_from_feedback_workspace(self):
+        response = self.client.get("/mentor-data")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Upload mentor source documents", response.data)
+        self.assertIn(b"Feedback workspace", response.data)
+        self.assertNotIn(b"Get mentor feedback", response.data)
+
+    def test_mentor_source_upload_creates_pending_batch_manifest(self):
+        response = self.client.post(
+            "/mentor-data/upload",
+            data={
+                "mentor_id": "dr-nanshu-lu",
+                "notes": "Examples of critical research feedback.",
+                "files": [
+                    (BytesIO(b"First mentor source"), "review one.txt"),
+                    (BytesIO(b"Second mentor source"), "comments.vtt"),
+                ],
+            },
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Saved 2 documents", response.data)
+
+        pending_root = (
+            Path(app.config["MENTOR_SOURCE_DIRECTORY"]) / "dr-nanshu-lu" / "pending"
+        )
+        batches = list(pending_root.iterdir())
+        self.assertEqual(len(batches), 1)
+        manifest = json.loads((batches[0] / "manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["status"], "pending")
+        self.assertEqual(manifest["mentor_id"], "dr-nanshu-lu")
+        self.assertEqual(len(manifest["documents"]), 2)
+        self.assertTrue((batches[0] / "01-review_one.txt").is_file())
+        self.assertTrue((batches[0] / "02-comments.vtt").is_file())
+
+    def test_mentor_source_upload_rejects_unsupported_file(self):
+        response = self.client.post(
+            "/mentor-data/upload",
+            data={
+                "mentor_id": "dr-nanshu-lu",
+                "files": (BytesIO(b"executable"), "unsafe.exe"),
+            },
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(b"not supported", response.data)
+        self.assertFalse(Path(app.config["MENTOR_SOURCE_DIRECTORY"]).exists())
 
     @patch("app.OpenAI")
     def test_openai_receives_mentor_profile_and_review(self, mock_openai):
