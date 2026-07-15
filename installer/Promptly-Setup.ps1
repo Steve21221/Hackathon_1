@@ -124,6 +124,10 @@ OLLAMA_MODEL=$model
 # Optional paid OpenAI alternative
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-5-mini
+
+# Optional paid Anthropic Claude alternative
+ANTHROPIC_API_KEY=
+CLAUDE_MODEL=claude-sonnet-4-5
 "@ | Set-Content -Path (Join-Path $InstallDirectory ".env") -Encoding UTF8
 
     $runCommandPath = Join-Path $InstallDirectory "Run-Promptly.cmd"

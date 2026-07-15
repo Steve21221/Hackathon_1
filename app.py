@@ -11,6 +11,7 @@ from uuid import uuid4
 from docx import Document
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
+from anthropic import Anthropic, APIError as AnthropicError
 from openai import OpenAI, OpenAIError
 from pptx import Presentation
 from pypdf import PdfReader
@@ -137,7 +138,9 @@ def call_model(
         return call_ollama(instructions, prompt)
     if provider == "openai":
         return call_openai(instructions, prompt)
-    raise ValueError("MODEL_PROVIDER must be demo, ollama, or openai.")
+    if provider in {"claude", "anthropic"}:
+        return call_claude(instructions, prompt)
+    raise ValueError("MODEL_PROVIDER must be demo, ollama, openai, or claude.")
 
 
 def call_ollama(instructions: str, prompt: str) -> str:
@@ -186,6 +189,30 @@ def call_openai(instructions: str, prompt: str) -> str:
     output = response.output_text.strip()
     if not output:
         raise ValueError("OpenAI returned an empty response.")
+    return output
+
+
+def call_claude(instructions: str, prompt: str) -> str:
+    """Generate feedback with the configured Anthropic Claude model."""
+    api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+    if not api_key:
+        raise ValueError("ANTHROPIC_API_KEY is missing from .env.")
+    client = Anthropic(api_key=api_key, timeout=60.0)
+    response = client.messages.create(
+        model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-5").strip() or "claude-sonnet-4-5",
+        max_tokens=2_000,
+        system=instructions,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.2,
+    )
+    parts = [
+        block.text
+        for block in response.content
+        if getattr(block, "type", None) == "text" and getattr(block, "text", "").strip()
+    ]
+    output = "\n".join(parts).strip()
+    if not output:
+        raise ValueError("Claude returned an empty response.")
     return output
 
 
@@ -460,12 +487,15 @@ def feedback():
             selected_type=kind,
             selected_mentor=mentor_id,
         )
-    except (OSError, ValueError, OpenAIError, requests.RequestException) as exc:
+    except (OSError, ValueError, OpenAIError, AnthropicError, requests.RequestException) as exc:
         app.logger.exception("Feedback generation failed: %s", exc)
+        provider = os.getenv("MODEL_PROVIDER", "").strip().lower()
         if isinstance(exc, ValueError):
             message = str(exc)
-        elif os.getenv("MODEL_PROVIDER", "").strip().lower() == "ollama":
+        elif provider == "ollama":
             message = "We couldn't reach Ollama. Check that Ollama is running and the model is installed."
+        elif provider in {"claude", "anthropic"}:
+            message = "We couldn't reach Claude. Check the Anthropic API key and internet connection."
         else:
             message = "We couldn't reach OpenAI. Check the API key and internet connection."
         return render_home(
@@ -498,7 +528,7 @@ def api_generate():
         return jsonify({"error": "Please choose an available mentor."}), 400
     try:
         return jsonify({"output": call_model(prompt, mentor_id=mentor_id)})
-    except (OpenAIError, ValueError, requests.RequestException) as exc:
+    except (OpenAIError, AnthropicError, ValueError, requests.RequestException) as exc:
         app.logger.exception("Model request failed: %s", exc)
         return jsonify({"error": "We couldn't reach the configured model."}), 502
 

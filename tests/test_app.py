@@ -17,6 +17,8 @@ class PromptlyTestCase(unittest.TestCase):
         os.environ.pop("MODEL_PROVIDER", None)
         os.environ.pop("OPENAI_API_KEY", None)
         os.environ.pop("OPENAI_MODEL", None)
+        os.environ.pop("ANTHROPIC_API_KEY", None)
+        os.environ.pop("CLAUDE_MODEL", None)
         app.config.update(TESTING=True)
         self.original_source_directory = app.config["MENTOR_SOURCE_DIRECTORY"]
         self.source_temp = tempfile.TemporaryDirectory()
@@ -184,6 +186,28 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertFalse(payload["stream"])
         self.assertIn("Dr. Nanshu Lu", payload["messages"][0]["content"])
         self.assertIn("A testable idea", payload["messages"][1]["content"])
+
+    @patch("app.Anthropic")
+    def test_claude_receives_mentor_profile_and_review(self, mock_anthropic):
+        os.environ["MODEL_PROVIDER"] = "claude"
+        os.environ["ANTHROPIC_API_KEY"] = "test-key"
+        mock_anthropic.return_value.messages.create.return_value = SimpleNamespace(
+            content=[SimpleNamespace(type="text", text="Focused Claude mentor feedback")]
+        )
+
+        result = call_model(
+            "Review category: Research ideas\nContent: A testable idea.",
+            mentor_id="dr-nanshu-lu",
+        )
+
+        self.assertEqual(result, "Focused Claude mentor feedback")
+        request = mock_anthropic.return_value.messages.create.call_args.kwargs
+        self.assertEqual(request["model"], "claude-sonnet-4-5")
+        self.assertEqual(request["max_tokens"], 2_000)
+        self.assertIn("Dr. Nanshu Lu", request["system"])
+        self.assertIn("rigorous, supportive", request["system"])
+        self.assertEqual(request["messages"][0]["role"], "user")
+        self.assertIn("A testable idea", request["messages"][0]["content"])
 
     def test_word_document_upload_is_read(self):
         file_data = BytesIO()

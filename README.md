@@ -1,6 +1,6 @@
 # Promptly - Python local AI feedback website
 
-Promptly is a local-first Python website for uploading work and receiving category-specific, mentor-style feedback. It can use the open-source Qwen 3.5 model through Ollama entirely on the user's computer, with OpenAI available as an optional paid alternative. The interface uses HTML and CSS, and all application logic runs in Python with Flask. No client-side JavaScript is used.
+Promptly is a local-first Python website for uploading work and receiving category-specific, mentor-style feedback. It can use the open-source Qwen 3.5 model through Ollama entirely on the user's computer, with OpenAI or Anthropic Claude available as optional paid API alternatives. The project does not train or fine-tune models; it only sends extracted text to a selected inference provider. The interface uses HTML and CSS, and all application logic runs in Python with Flask. No client-side JavaScript is used.
 
 ## Supported files
 
@@ -168,6 +168,31 @@ OPENAI_MODEL=gpt-5-mini
 
 The application extracts text from the upload in memory, then sends the extracted content—not the original file—to OpenAI. The request asks OpenAI not to store the response (`store=False`) and caps generated output at 2,000 tokens. Review your organization's OpenAI data and retention requirements before using confidential or unpublished work.
 
+## Optional: connect Claude (Anthropic)
+
+This integration uses the Anthropic Messages API. API usage may cost money.
+
+1. Create an API key in your [Anthropic Console](https://console.anthropic.com/).
+2. In the project folder, create your private `.env` file if it does not already exist:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+3. Open `.env` and set:
+
+```text
+MODEL_PROVIDER=claude
+ANTHROPIC_API_KEY=your-private-key-here
+CLAUDE_MODEL=claude-sonnet-4-5
+```
+
+`MODEL_PROVIDER=anthropic` is also accepted. Change `CLAUDE_MODEL` if you prefer another Claude model available on your account.
+
+4. Restart the website after changing `.env`.
+
+The application extracts text from the upload in memory, then sends the extracted content—not the original file—to Anthropic. Generated output is capped at 2,000 tokens. Review your organization's Anthropic data and retention requirements before using confidential or unpublished work.
+
 ## Mentor prompt contributor workflow
 
 The prompt contributor does not need to edit the Flask routes or file extraction code.
@@ -184,6 +209,7 @@ Promptly extracts the uploaded file's text, identifies the selected feedback cat
 
 - `ollama`: a local Qwen model; no API key or per-token charge.
 - `openai`: the OpenAI Responses API; requires an API key and incurs API usage charges.
+- `claude` (or `anthropic`): the Anthropic Messages API; requires an API key and incurs API usage charges.
 - `demo`: no model request; returns a local confirmation message.
 
 Secrets stay on the Python server and are never sent to the browser. The generated final answer is returned to the Mentor feedback panel.
