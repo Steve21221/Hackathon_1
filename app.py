@@ -136,7 +136,7 @@ def call_model(
 def call_ollama(instructions: str, prompt: str) -> str:
     """Generate local feedback with a thinking-capable model served by Ollama."""
     base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
-    model = os.getenv("OLLAMA_MODEL", "deepseek-r1:14b").strip() or "deepseek-r1:14b"
+    model = os.getenv("OLLAMA_MODEL", "qwen3.5:9b").strip() or "qwen3.5:9b"
     response = requests.post(
         f"{base_url}/api/chat",
         json={

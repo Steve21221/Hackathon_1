@@ -1,6 +1,6 @@
 # Promptly - Python local AI feedback website
 
-Promptly is a local-first Python website for uploading work and receiving category-specific, mentor-style feedback. It can use a DeepSeek reasoning model through Ollama entirely on the user's computer, with OpenAI available as an optional paid alternative. The interface uses HTML and CSS, and all application logic runs in Python with Flask. No client-side JavaScript is used.
+Promptly is a local-first Python website for uploading work and receiving category-specific, mentor-style feedback. It can use the open-source Qwen 3.5 model through Ollama entirely on the user's computer, with OpenAI available as an optional paid alternative. The interface uses HTML and CSS, and all application logic runs in Python with Flask. No client-side JavaScript is used.
 
 ## Supported files
 
@@ -24,7 +24,7 @@ The current general prompt is stored in `mentor_prompts/dr-nanshu-lu.txt`. It is
 
 ### Easy setup (recommended)
 
-The downloadable setup script installs Promptly in `%LOCALAPPDATA%\Promptly`, prepares its private Python environment, installs Ollama when needed, downloads the selected DeepSeek model, and creates a **Promptly** desktop shortcut.
+The downloadable setup script installs Promptly in `%LOCALAPPDATA%\Promptly`, prepares its private Python environment, installs Ollama when needed, downloads the selected Qwen model, and creates a **Promptly** desktop shortcut.
 
 1. Download [`installer/Promptly-Setup.ps1`](installer/Promptly-Setup.ps1) from GitHub using the **Download raw file** button.
 2. Open PowerShell and run:
@@ -35,9 +35,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Downloads\Promptly-Se
 
 3. Choose a model based on the computer:
 
-   - DeepSeek R1 8B: approximately 5.2 GB; start here for a computer with 16 GB RAM.
-   - DeepSeek R1 14B: approximately 9 GB; recommended default for 32 GB RAM.
-   - DeepSeek R1 32B: approximately 20 GB; strongest offered setup option, recommended for 64 GB RAM.
+   - Qwen 3.5 4B: approximately 3.4 GB; start here for a computer with 16 GB RAM.
+   - Qwen 3.5 9B: approximately 6.6 GB; recommended default for 32 GB RAM.
+   - Qwen 3.5 27B: approximately 17 GB; strongest offered setup option, recommended for 64 GB RAM.
 
 4. After setup, double-click **Promptly** on the desktop. Keep the opened command window running while using the website; close it or press `Ctrl+C` to stop Promptly.
 
@@ -116,12 +116,12 @@ Without a `.env` file, the website works in demo mode and makes no model request
 
 ## Run a local reasoning model with Ollama
 
-The recommended local provider is Ollama with DeepSeek R1. Copy `.env.example` to `.env`, then use:
+The recommended local provider is Ollama with Qwen 3.5. Copy `.env.example` to `.env`, then use:
 
 ```text
 MODEL_PROVIDER=ollama
 OLLAMA_BASE_URL=http://127.0.0.1:11434
-OLLAMA_MODEL=deepseek-r1:14b
+OLLAMA_MODEL=qwen3.5:9b
 ```
 
 The application sends the mentor instructions and extracted file text to Ollama's local API. Thinking mode is enabled so the model can reason before answering, but only the final feedback is displayed. The request uses a 32,768-token working context and limits the final response to 2,000 tokens.
@@ -129,7 +129,7 @@ The application sends the mentor instructions and extracted file text to Ollama'
 Ollama and the selected model must be installed and running. To install the default model manually:
 
 ```powershell
-ollama pull deepseek-r1:14b
+ollama pull qwen3.5:9b
 ```
 
 No content is sent to OpenAI when `MODEL_PROVIDER=ollama`.
@@ -172,7 +172,7 @@ The prompt contributor does not need to edit the Flask routes or file extraction
 
 Promptly extracts the uploaded file's text, identifies the selected feedback category, includes the optional focus, and combines it with the mentor prompt. It then sends that request to the provider selected in `.env`:
 
-- `ollama`: a local DeepSeek reasoning model; no API key or per-token charge.
+- `ollama`: a local Qwen model; no API key or per-token charge.
 - `openai`: the OpenAI Responses API; requires an API key and incurs API usage charges.
 - `demo`: no model request; returns a local confirmation message.
 

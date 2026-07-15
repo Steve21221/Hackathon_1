@@ -107,7 +107,7 @@ class PromptlyTestCase(unittest.TestCase):
     @patch("app.requests.post")
     def test_ollama_receives_thinking_prompt_locally(self, mock_post):
         os.environ["MODEL_PROVIDER"] = "ollama"
-        os.environ["OLLAMA_MODEL"] = "deepseek-r1:14b"
+        os.environ["OLLAMA_MODEL"] = "qwen3.5:9b"
         mock_post.return_value.json.return_value = {
             "message": {"content": "Critical local feedback", "thinking": "hidden reasoning"}
         }
@@ -121,7 +121,7 @@ class PromptlyTestCase(unittest.TestCase):
         request = mock_post.call_args
         self.assertEqual(request.args[0], "http://127.0.0.1:11434/api/chat")
         payload = request.kwargs["json"]
-        self.assertEqual(payload["model"], "deepseek-r1:14b")
+        self.assertEqual(payload["model"], "qwen3.5:9b")
         self.assertTrue(payload["think"])
         self.assertFalse(payload["stream"])
         self.assertIn("Dr. Nanshu Lu", payload["messages"][0]["content"])

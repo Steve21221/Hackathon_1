@@ -1,6 +1,6 @@
 param(
     [string]$InstallDirectory = "$env:LOCALAPPDATA\Promptly",
-    [string]$RepositoryBranch = "agent/connect-openai-mentor-feedback"
+    [string]$RepositoryBranch = "main"
 )
 
 $ErrorActionPreference = "Stop"
@@ -99,14 +99,14 @@ try {
     }
 
     Write-Step "Choose the local reasoning model"
-    Write-Host "1. DeepSeek R1 8B  - about 5.2 GB; recommended for 16 GB RAM"
-    Write-Host "2. DeepSeek R1 14B - about 9 GB; recommended for 32 GB RAM (default)"
-    Write-Host "3. DeepSeek R1 32B - about 20 GB; recommended for 64 GB RAM"
+    Write-Host "1. Qwen 3.5 4B  - about 3.4 GB; recommended for 16 GB RAM"
+    Write-Host "2. Qwen 3.5 9B  - about 6.6 GB; recommended for 32 GB RAM (default)"
+    Write-Host "3. Qwen 3.5 27B - about 17 GB; recommended for 64 GB RAM"
     $choice = Read-Host "Enter 1, 2, or 3"
     $model = switch ($choice) {
-        "1" { "deepseek-r1:8b" }
-        "3" { "deepseek-r1:32b" }
-        default { "deepseek-r1:14b" }
+        "1" { "qwen3.5:4b" }
+        "3" { "qwen3.5:27b" }
+        default { "qwen3.5:9b" }
     }
 
     Write-Step "Downloading $model"
