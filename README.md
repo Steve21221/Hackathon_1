@@ -18,7 +18,7 @@ Currently available:
 
 - **Dr. Nanshu Lu** (`dr-nanshu-lu`)
 
-The current general prompt is stored in `mentor_prompts/dr-nanshu-lu.txt`. It is intentionally easy to replace when the prompt contributor supplies a validated version. Additional mentors can be added to the `MENTORS` configuration and `mentor_prompts` folder.
+The current general prompt is stored in `Mentor_Data/dr-nanshu-lu.txt`. It is intentionally easy to replace when the prompt contributor supplies a validated version. Each mentor listed on the website has a corresponding prompt file in `Mentor_Data`; additional mentors can be added to the `MENTORS` configuration and that folder.
 
 ## Run it on Windows
 
@@ -162,7 +162,7 @@ The application extracts text from the upload in memory, then sends the extracte
 
 The prompt contributor does not need to edit the Flask routes or file extraction code.
 
-1. Open `mentor_prompts/dr-nanshu-lu.txt`.
+1. Open `Mentor_Data/dr-nanshu-lu.txt`.
 2. Replace the temporary general profile with the validated mentor-style prompt.
 3. Keep the prompt focused on review priorities, tone, critical questions, response organization, and examples of desired feedback behavior.
 4. Do not include an API key or private research content in the prompt file.

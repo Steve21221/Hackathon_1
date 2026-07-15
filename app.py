@@ -76,6 +76,7 @@ MENTORS = {
     }
 }
 DEFAULT_MENTOR_ID = "dr-nanshu-lu"
+MENTOR_DATA_DIRECTORY = PROJECT_ROOT / "Mentor_Data"
 
 BASE_MENTOR_INSTRUCTIONS = """You are providing expert research mentorship.
 Follow the selected mentor style profile closely without claiming to be the real person.
@@ -93,7 +94,7 @@ def load_mentor_prompt(mentor_id: str) -> str:
     if not mentor:
         raise ValueError("Please choose an available mentor.")
 
-    prompt_path = PROJECT_ROOT / "mentor_prompts" / mentor["prompt_file"]
+    prompt_path = MENTOR_DATA_DIRECTORY / mentor["prompt_file"]
     try:
         prompt = prompt_path.read_text(encoding="utf-8").strip()
     except OSError as exc:
