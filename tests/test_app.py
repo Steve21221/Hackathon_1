@@ -1,38 +1,42 @@
 import os
 import unittest
 from io import BytesIO
+from types import SimpleNamespace
+from unittest.mock import patch
 
-from app import app, build_feedback_prompt
+from app import app, build_feedback_prompt, call_model, load_mentor_prompt
 from docx import Document
 from pptx import Presentation
 
 
 class PromptlyTestCase(unittest.TestCase):
     def setUp(self):
-        os.environ.pop("MODEL_API_URL", None)
+        os.environ.pop("MODEL_PROVIDER", None)
+        os.environ.pop("OPENAI_API_KEY", None)
+        os.environ.pop("OPENAI_MODEL", None)
         app.config.update(TESTING=True)
         self.client = app.test_client()
 
-    def test_home_page_has_three_upload_sections(self):
+    def test_home_page_has_three_feedback_categories(self):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Document", response.data)
-        self.assertIn(b"Transcript", response.data)
-        self.assertIn(b"PowerPoint", response.data)
+        self.assertIn(b"Papers &amp; proposals", response.data)
+        self.assertIn(b"Research ideas", response.data)
+        self.assertIn(b"Talks &amp; slides", response.data)
         self.assertIn(b"Dr. Nanshu Lu", response.data)
         self.assertNotIn(b'name="file"', response.data)
 
     def test_clicking_type_shows_one_upload_form(self):
-        response = self.client.get("/?type=transcript")
+        response = self.client.get("/?type=research-ideas")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data.count(b'name="file"'), 1)
-        self.assertIn(b"Choose a transcript", response.data)
+        self.assertIn(b"Choose a research idea", response.data)
 
-    def test_transcript_upload_returns_demo_feedback(self):
+    def test_research_idea_upload_returns_demo_feedback(self):
         response = self.client.post(
             "/feedback",
             data={
-                "content_type": "transcript",
+                "content_type": "research-ideas",
                 "focus": "key decisions",
                 "file": (BytesIO(b"Speaker one: We approved the project."), "meeting.txt"),
             },
@@ -44,7 +48,7 @@ class PromptlyTestCase(unittest.TestCase):
     def test_rejects_wrong_file_type(self):
         response = self.client.post(
             "/feedback",
-            data={"content_type": "powerpoint", "file": (BytesIO(b"not a presentation"), "notes.txt")},
+            data={"content_type": "papers-proposals", "file": (BytesIO(b"not a paper"), "notes.pptx")},
             content_type="multipart/form-data",
         )
         self.assertEqual(response.status_code, 400)
@@ -54,7 +58,7 @@ class PromptlyTestCase(unittest.TestCase):
         response = self.client.post(
             "/feedback",
             data={
-                "content_type": "document",
+                "content_type": "papers-proposals",
                 "mentor_id": "unknown-mentor",
                 "file": (BytesIO(b"Example content"), "example.txt"),
             },
@@ -65,7 +69,7 @@ class PromptlyTestCase(unittest.TestCase):
 
     def test_feedback_prompt_identifies_mentor(self):
         prompt = build_feedback_prompt(
-            "document",
+            "papers-proposals",
             "example.txt",
             "Example content",
             "clarity",
@@ -73,6 +77,55 @@ class PromptlyTestCase(unittest.TestCase):
         )
         self.assertIn("Dr. Nanshu Lu", prompt)
         self.assertIn("specialty, thinking process, and feedback style", prompt)
+        self.assertIn("strength of the argument", prompt)
+
+    def test_mentor_style_prompt_is_available(self):
+        prompt = load_mentor_prompt("dr-nanshu-lu")
+        self.assertIn("research mentor", prompt)
+
+    @patch("app.OpenAI")
+    def test_openai_receives_mentor_profile_and_review(self, mock_openai):
+        os.environ["MODEL_PROVIDER"] = "openai"
+        os.environ["OPENAI_API_KEY"] = "test-key"
+        mock_openai.return_value.responses.create.return_value = SimpleNamespace(
+            output_text="Focused mentor feedback"
+        )
+
+        result = call_model(
+            "Review category: Research ideas\nContent: A testable idea.",
+            mentor_id="dr-nanshu-lu",
+        )
+
+        self.assertEqual(result, "Focused mentor feedback")
+        request = mock_openai.return_value.responses.create.call_args.kwargs
+        self.assertEqual(request["model"], "gpt-5-mini")
+        self.assertIn("Dr. Nanshu Lu", request["instructions"])
+        self.assertIn("rigorous, supportive", request["instructions"])
+        self.assertIn("A testable idea", request["input"])
+        self.assertFalse(request["store"])
+
+    @patch("app.requests.post")
+    def test_ollama_receives_thinking_prompt_locally(self, mock_post):
+        os.environ["MODEL_PROVIDER"] = "ollama"
+        os.environ["OLLAMA_MODEL"] = "qwen3.5:9b"
+        mock_post.return_value.json.return_value = {
+            "message": {"content": "Critical local feedback", "thinking": "hidden reasoning"}
+        }
+
+        result = call_model(
+            "Review category: Research ideas\nContent: A testable idea.",
+            mentor_id="dr-nanshu-lu",
+        )
+
+        self.assertEqual(result, "Critical local feedback")
+        request = mock_post.call_args
+        self.assertEqual(request.args[0], "http://127.0.0.1:11434/api/chat")
+        payload = request.kwargs["json"]
+        self.assertEqual(payload["model"], "qwen3.5:9b")
+        self.assertTrue(payload["think"])
+        self.assertFalse(payload["stream"])
+        self.assertIn("Dr. Nanshu Lu", payload["messages"][0]["content"])
+        self.assertIn("A testable idea", payload["messages"][1]["content"])
 
     def test_word_document_upload_is_read(self):
         file_data = BytesIO()
@@ -82,7 +135,7 @@ class PromptlyTestCase(unittest.TestCase):
         file_data.seek(0)
         response = self.client.post(
             "/feedback",
-            data={"content_type": "document", "file": (file_data, "proposal.docx")},
+            data={"content_type": "papers-proposals", "file": (file_data, "proposal.docx")},
             content_type="multipart/form-data",
         )
         self.assertEqual(response.status_code, 200)
@@ -98,7 +151,7 @@ class PromptlyTestCase(unittest.TestCase):
         file_data.seek(0)
         response = self.client.post(
             "/feedback",
-            data={"content_type": "powerpoint", "file": (file_data, "update.pptx")},
+            data={"content_type": "talks-slides", "file": (file_data, "update.pptx")},
             content_type="multipart/form-data",
         )
         self.assertEqual(response.status_code, 200)
