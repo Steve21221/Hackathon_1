@@ -16,14 +16,19 @@ class PromptlyTestCase(unittest.TestCase):
         os.environ.pop("MODEL_PROVIDER", None)
         os.environ.pop("OPENAI_API_KEY", None)
         os.environ.pop("OPENAI_MODEL", None)
+        os.environ.pop("ANTHROPIC_API_KEY", None)
+        os.environ.pop("CLAUDE_MODEL", None)
         app.config.update(TESTING=True)
         self.original_output_directory = app.config["OUTPUT_DIR"]
+        self.original_mentor_library_directory = app.config["MENTOR_LIBRARY_DIR"]
         self.output_temp = tempfile.TemporaryDirectory()
         app.config["OUTPUT_DIR"] = Path(self.output_temp.name) / "outputs"
+        app.config["MENTOR_LIBRARY_DIR"] = Path(self.output_temp.name) / "mentor_files"
         self.client = app.test_client()
 
     def tearDown(self):
         app.config["OUTPUT_DIR"] = self.original_output_directory
+        app.config["MENTOR_LIBRARY_DIR"] = self.original_mentor_library_directory
         self.output_temp.cleanup()
 
     def test_home_page_has_three_feedback_categories(self):
@@ -114,6 +119,84 @@ class PromptlyTestCase(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn(b"not supported", response.data)
+
+    def test_named_prompt_library_persists_files_and_stable_prompts(self):
+        response = self.client.post(
+            "/generate-prompts",
+            data={
+                "prompt_mentor_name": "Dr. Custom Mentor",
+                "research_files": (
+                    BytesIO(b"Clarify the hypothesis and define the next experiment."),
+                    "meeting-notes.txt",
+                ),
+            },
+            content_type="multipart/form-data",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        library = Path(app.config["MENTOR_LIBRARY_DIR"]) / "dr-custom-mentor"
+        self.assertTrue((library / "mentor.json").is_file())
+        self.assertTrue(
+            (library / "meeting_research_pi" / "raw" / "meeting-notes.txt").is_file()
+        )
+        self.assertTrue((library / "meeting_research_pi" / "prompt.txt").is_file())
+        self.assertTrue((library / "all_pi_style_prompts.txt").is_file())
+        self.assertIn(b"Dr. Custom Mentor", response.data)
+        self.assertIn(b"meeting-notes.txt", response.data)
+
+    def test_existing_prompt_library_can_regenerate_without_new_uploads(self):
+        self.client.post(
+            "/generate-prompts",
+            data={
+                "prompt_mentor_name": "Existing Mentor",
+                "research_files": (BytesIO(b"Ask for missing controls."), "first.txt"),
+            },
+            content_type="multipart/form-data",
+        )
+
+        response = self.client.post(
+            "/generate-prompts",
+            data={"selected_prompt_mentor": "existing-mentor"},
+            content_type="multipart/form-data",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"PI-style prompts ready", response.data)
+        self.assertIn(b"first.txt", response.data)
+
+    def test_prompt_library_selection_and_delete_flow(self):
+        self.client.post(
+            "/generate-prompts",
+            data={
+                "prompt_mentor_name": "Delete Mentor",
+                "paper_files": (BytesIO(b"Tighten the argument."), "review.txt"),
+            },
+            content_type="multipart/form-data",
+        )
+        library = Path(app.config["MENTOR_LIBRARY_DIR"]) / "delete-mentor"
+
+        selected = self.client.get("/prompt-library?prompt_mentor=delete-mentor")
+        self.assertEqual(selected.status_code, 200)
+        self.assertIn(b"Delete Mentor", selected.data)
+        self.assertIn(b"Delete library", selected.data)
+        self.assertIn(b"review.txt", selected.data)
+
+        deleted = self.client.post(
+            "/delete-mentor",
+            data={"selected_prompt_mentor": "delete-mentor"},
+            follow_redirects=True,
+        )
+        self.assertEqual(deleted.status_code, 200)
+        self.assertFalse(library.exists())
+        self.assertNotIn(b"review.txt", deleted.data)
+
+    def test_delete_prompt_library_rejects_unsafe_selection(self):
+        response = self.client.post(
+            "/delete-mentor",
+            data={"selected_prompt_mentor": "../outside"},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(b"existing mentor", response.data)
 
     def test_clicking_type_shows_one_upload_form(self):
         response = self.client.get("/?type=research-ideas")
@@ -215,6 +298,28 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertFalse(payload["stream"])
         self.assertIn("Dr. Nanshu Lu", payload["messages"][0]["content"])
         self.assertIn("A testable idea", payload["messages"][1]["content"])
+
+    @patch("app.Anthropic")
+    def test_claude_receives_mentor_profile_and_review(self, mock_anthropic):
+        os.environ["MODEL_PROVIDER"] = "claude"
+        os.environ["ANTHROPIC_API_KEY"] = "test-key"
+        mock_anthropic.return_value.messages.create.return_value = SimpleNamespace(
+            content=[SimpleNamespace(type="text", text="Focused Claude mentor feedback")]
+        )
+
+        result = call_model(
+            "Review category: Research ideas\nContent: A testable idea.",
+            mentor_id="dr-nanshu-lu",
+        )
+
+        self.assertEqual(result, "Focused Claude mentor feedback")
+        request = mock_anthropic.return_value.messages.create.call_args.kwargs
+        self.assertEqual(request["model"], "claude-sonnet-4-5")
+        self.assertEqual(request["max_tokens"], 2_000)
+        self.assertIn("Dr. Nanshu Lu", request["system"])
+        self.assertIn("rigorous, supportive", request["system"])
+        self.assertEqual(request["messages"][0]["role"], "user")
+        self.assertIn("A testable idea", request["messages"][0]["content"])
 
     def test_word_document_upload_is_read(self):
         file_data = BytesIO()

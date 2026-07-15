@@ -1,6 +1,8 @@
 import html
+import json
 import os
 import re
+import shutil
 import time
 from io import BytesIO
 from pathlib import Path
@@ -9,8 +11,19 @@ from uuid import uuid4
 
 from docx import Document
 from dotenv import load_dotenv
-from flask import Flask, Response, abort, jsonify, render_template, request, send_file
+from flask import (
+    Flask,
+    Response,
+    abort,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    send_file,
+    url_for,
+)
 from markupsafe import Markup
+from anthropic import Anthropic, APIError as AnthropicError
 from openai import OpenAI, OpenAIError
 from pptx import Presentation
 from pypdf import PdfReader
@@ -42,6 +55,7 @@ MAX_EXTRACTED_TEXT = 100_000
 MAX_PROMPT_PREVIEW_SEGMENTS = 3
 PROJECT_ROOT = Path(__file__).resolve().parent
 app.config["OUTPUT_DIR"] = PROJECT_ROOT / "outputs"
+app.config["MENTOR_LIBRARY_DIR"] = PROJECT_ROOT / "mentor_files"
 
 UPLOAD_TYPES = {
     "papers-proposals": {
@@ -168,7 +182,9 @@ def call_model(
         return call_ollama(instructions, prompt)
     if provider == "openai":
         return call_openai(instructions, prompt)
-    raise ValueError("MODEL_PROVIDER must be demo, ollama, or openai.")
+    if provider in {"claude", "anthropic"}:
+        return call_claude(instructions, prompt)
+    raise ValueError("MODEL_PROVIDER must be demo, ollama, openai, or claude.")
 
 
 def call_ollama(instructions: str, prompt: str) -> str:
@@ -237,7 +253,9 @@ def call_prompt_model(prompt: str) -> str | None:
         return call_ollama(PROMPT_EXTRACTION_INSTRUCTIONS, prompt)
     if provider == "openai":
         return call_openai(PROMPT_EXTRACTION_INSTRUCTIONS, prompt)
-    raise ValueError("MODEL_PROVIDER must be demo, ollama, or openai.")
+    if provider in {"claude", "anthropic"}:
+        return call_claude(PROMPT_EXTRACTION_INSTRUCTIONS, prompt)
+    raise ValueError("MODEL_PROVIDER must be demo, ollama, openai, or claude.")
 
 
 def extract_generated_prompt(content: str) -> str:
@@ -273,9 +291,33 @@ def generate_model_prompt_for_mode(
             )
         )
         return polish_llm_prompt_output(final_prompt) if final_prompt else None
-    except (OSError, OpenAIError, ValueError, requests.RequestException) as exc:
+    except (OSError, OpenAIError, AnthropicError, ValueError, requests.RequestException) as exc:
         app.logger.warning("Prompt style extraction failed for %s: %s", mode, exc)
         return None
+
+
+def call_claude(instructions: str, prompt: str) -> str:
+    """Generate feedback with the configured Anthropic Claude model."""
+    api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+    if not api_key:
+        raise ValueError("ANTHROPIC_API_KEY is missing from .env.")
+    client = Anthropic(api_key=api_key, timeout=60.0)
+    response = client.messages.create(
+        model=os.getenv("CLAUDE_MODEL", "claude-sonnet-4-5").strip() or "claude-sonnet-4-5",
+        max_tokens=2_000,
+        system=instructions,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.2,
+    )
+    parts = [
+        block.text
+        for block in response.content
+        if getattr(block, "type", None) == "text" and getattr(block, "text", "").strip()
+    ]
+    output = "\n".join(parts).strip()
+    if not output:
+        raise ValueError("Claude returned an empty response.")
+    return output
 
 
 def extract_plain_text(file_bytes: bytes) -> str:
@@ -369,6 +411,160 @@ def get_output_dir() -> Path:
     return Path(app.config["OUTPUT_DIR"])
 
 
+def get_mentor_library_dir() -> Path:
+    return Path(app.config["MENTOR_LIBRARY_DIR"])
+
+
+def mentor_slug(name: str) -> str:
+    words = re.findall(r"[A-Za-z0-9]+", name.lower())
+    return "-".join(words[:8]) if words else "mentor"
+
+
+def mentor_dir(slug: str) -> Path:
+    return get_mentor_library_dir() / mentor_slug(slug)
+
+
+def mode_dir_for_mentor(slug: str, mode: str) -> Path:
+    return mentor_dir(slug) / mode
+
+
+def ensure_prompt_mentor(name: str) -> dict[str, str]:
+    display_name = name.strip() or "PI Style Library"
+    slug = mentor_slug(display_name)
+    directory = mentor_dir(slug)
+    directory.mkdir(parents=True, exist_ok=True)
+    for mode in MODE_DEFINITIONS:
+        (directory / mode / "raw").mkdir(parents=True, exist_ok=True)
+    metadata = {"slug": slug, "name": display_name}
+    (directory / "mentor.json").write_text(
+        json.dumps(metadata, indent=2),
+        encoding="utf-8",
+    )
+    return metadata
+
+
+def read_prompt_mentor(slug: str) -> dict[str, str] | None:
+    safe_slug = mentor_slug(slug)
+    metadata_path = mentor_dir(safe_slug) / "mentor.json"
+    if not metadata_path.exists():
+        return None
+    try:
+        data = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {"slug": safe_slug, "name": safe_slug.replace("-", " ").title()}
+    return {
+        "slug": safe_slug,
+        "name": str(data.get("name") or safe_slug.replace("-", " ").title()),
+    }
+
+
+def list_prompt_mentors() -> list[dict[str, str]]:
+    root = get_mentor_library_dir()
+    if not root.exists():
+        return []
+    mentors: list[dict[str, str]] = []
+    for child in sorted(root.iterdir(), key=lambda path: path.name.lower()):
+        if child.is_dir():
+            mentor = read_prompt_mentor(child.name)
+            if mentor:
+                mentors.append(mentor)
+    return mentors
+
+
+def resolve_prompt_mentor(selected_slug: str = "", new_name: str = "") -> dict[str, str]:
+    if new_name.strip():
+        return ensure_prompt_mentor(new_name)
+    if selected_slug.strip():
+        existing = read_prompt_mentor(selected_slug)
+        if existing:
+            return existing
+        raise ValueError("Please select an existing mentor or create a new one.")
+    return ensure_prompt_mentor("PI Style Library")
+
+
+def stored_files_for_mentor(slug: str) -> dict[str, list[str]]:
+    if not slug:
+        return {mode: [] for mode in MODE_DEFINITIONS}
+    files_by_mode: dict[str, list[str]] = {}
+    for mode in MODE_DEFINITIONS:
+        raw_directory = mode_dir_for_mentor(slug, mode) / "raw"
+        files_by_mode[mode] = (
+            sorted(path.name for path in raw_directory.iterdir() if path.is_file())
+            if raw_directory.exists()
+            else []
+        )
+    return files_by_mode
+
+
+def save_uploaded_reference_files(slug: str) -> None:
+    for mode, config in REFERENCE_UPLOAD_GROUPS.items():
+        raw_directory = mode_dir_for_mentor(slug, mode) / "raw"
+        raw_directory.mkdir(parents=True, exist_ok=True)
+        uploads = [
+            item
+            for item in request.files.getlist(config["field"])
+            if item and item.filename
+        ]
+        for uploaded_file in uploads:
+            filename = safe_uploaded_filename(uploaded_file)
+            if not is_supported_filename(filename):
+                allowed = ", ".join(sorted(SUPPORTED_EXTENSIONS))
+                raise ValueError(
+                    f"{filename} is not supported for {config['label']}. Use: {allowed}."
+                )
+            (raw_directory / filename).write_bytes(uploaded_file.read())
+
+
+def build_grouped_reference_chunks_from_mentor(slug: str) -> dict[str, list[dict]]:
+    grouped_chunks: dict[str, list[dict]] = {mode: [] for mode in MODE_DEFINITIONS}
+    for mode, config in REFERENCE_UPLOAD_GROUPS.items():
+        raw_directory = mode_dir_for_mentor(slug, mode) / "raw"
+        if not raw_directory.exists():
+            continue
+        for path in sorted(raw_directory.iterdir(), key=lambda item: item.name.lower()):
+            if not path.is_file():
+                continue
+            if not is_supported_filename(path.name):
+                allowed = ", ".join(sorted(SUPPORTED_EXTENSIONS))
+                raise ValueError(
+                    f"{path.name} is not supported for {config['label']}. Use: {allowed}."
+                )
+            text = extract_text_from_upload(path.read_bytes(), path.name)
+            chunks = chunk_text(text, mode)
+            if chunks:
+                grouped_chunks[mode].append({"source_file": path.name, "chunks": chunks})
+    return grouped_chunks
+
+
+def save_mentor_prompt_outputs(slug: str, artifacts: dict[str, PromptArtifact]) -> Path:
+    directory = mentor_dir(slug)
+    directory.mkdir(parents=True, exist_ok=True)
+    for mode, artifact in artifacts.items():
+        if artifact.record_count <= 0:
+            continue
+        mode_directory = mode_dir_for_mentor(slug, mode)
+        mode_directory.mkdir(parents=True, exist_ok=True)
+        (mode_directory / "prompt.txt").write_text(artifact.content, encoding="utf-8")
+    (directory / "all_pi_style_prompts.txt").write_text(
+        build_combined_prompt_text(artifacts),
+        encoding="utf-8",
+    )
+    return directory
+
+
+def delete_prompt_mentor(slug: str) -> None:
+    safe_slug = mentor_slug(slug)
+    if safe_slug != slug.strip().lower():
+        raise ValueError("Please select an existing mentor to delete.")
+    directory = mentor_dir(safe_slug).resolve()
+    root = get_mentor_library_dir().resolve()
+    if root not in directory.parents:
+        raise ValueError("Please select an existing mentor to delete.")
+    if not directory.exists() or read_prompt_mentor(safe_slug) is None:
+        raise ValueError("Please select an existing mentor to delete.")
+    shutil.rmtree(directory)
+
+
 def compact_prompt_preview(artifact: PromptArtifact) -> str:
     """Return the generated reusable prompt for a compact result card."""
     lines = [line.strip() for line in artifact.content.splitlines() if line.strip()]
@@ -437,7 +633,7 @@ def truncate_preview(text: str, limit: int) -> str:
 def safe_uploaded_filename(uploaded_file: FileStorage) -> str:
     original = uploaded_file.filename or "uploaded.txt"
     filename = secure_filename(original)
-    return filename or Path(original).name
+    return filename or "uploaded.txt"
 
 
 def build_grouped_reference_chunks() -> dict[str, list[dict]]:
@@ -507,13 +703,30 @@ def render_home(**context: Any):
 
 
 def render_prompt_library(**context: Any):
+    selected_prompt_mentor = context.get("selected_prompt_mentor", "")
+    if not selected_prompt_mentor:
+        selected_prompt_mentor = request.args.get("prompt_mentor", "").strip().lower()
+    if selected_prompt_mentor and not read_prompt_mentor(selected_prompt_mentor):
+        selected_prompt_mentor = ""
+    selected_profile = (
+        read_prompt_mentor(selected_prompt_mentor) if selected_prompt_mentor else None
+    )
     defaults = {
         "error": "",
         "model_provider": os.getenv("MODEL_PROVIDER", "demo").strip().lower() or "demo",
         "prompt_cards": [],
         "prompt_output_location": "",
+        "prompt_run_location": "",
         "prompt_download_urls": {},
         "prompt_message": "",
+        "prompt_clean_url": url_for(
+            "prompt_library",
+            prompt_mentor=selected_prompt_mentor,
+        ) if selected_prompt_mentor else url_for("prompt_library"),
+        "prompt_mentors": list_prompt_mentors(),
+        "selected_prompt_mentor": selected_prompt_mentor,
+        "selected_prompt_mentor_profile": selected_profile,
+        "stored_prompt_files": stored_files_for_mentor(selected_prompt_mentor),
         "reset_on_refresh": False,
     }
     defaults.update(context)
@@ -545,12 +758,20 @@ def prompt_library():
 @app.post("/generate-prompts")
 def generate_prompts():
     try:
-        grouped_chunks = build_grouped_reference_chunks()
+        prompt_mentor = resolve_prompt_mentor(
+            selected_slug=request.form.get("selected_prompt_mentor", ""),
+            new_name=request.form.get("prompt_mentor_name", ""),
+        )
+        save_uploaded_reference_files(prompt_mentor["slug"])
+        grouped_chunks = build_grouped_reference_chunks_from_mentor(prompt_mentor["slug"])
     except (OSError, ValueError) as exc:
         return render_prompt_library(error=str(exc)), 400
 
     if not any(grouped_chunks.values()):
-        return render_prompt_library(error="Please upload at least one PI-style reference file."), 400
+        return render_prompt_library(
+            error="Please upload at least one PI-style reference file.",
+            selected_prompt_mentor=prompt_mentor["slug"],
+        ), 400
 
     artifacts = build_mode_prompt_artifacts(grouped_chunks)
     generated_prompts: dict[str, str] = {}
@@ -580,10 +801,15 @@ def generate_prompts():
 
     try:
         run_id = save_prompt_outputs(artifacts)
+        mentor_output_directory = save_mentor_prompt_outputs(
+            prompt_mentor["slug"],
+            artifacts,
+        )
     except OSError:
         app.logger.exception("Could not save generated PI-style prompts")
         return render_prompt_library(
-            error="The generated prompts could not be saved on this computer."
+            error="The generated prompts could not be saved on this computer.",
+            selected_prompt_mentor=prompt_mentor["slug"],
         ), 500
 
     prompt_cards = [
@@ -604,14 +830,34 @@ def generate_prompts():
     response = Response(
         render_prompt_library(
             prompt_cards=prompt_cards,
-            prompt_output_location=str(get_output_dir() / run_id),
+            prompt_output_location=str(mentor_output_directory),
+            prompt_run_location=str(get_output_dir() / run_id),
             prompt_download_urls=prompt_download_urls,
             prompt_message="PI-style prompts ready",
+            selected_prompt_mentor=prompt_mentor["slug"],
+            selected_prompt_mentor_profile=prompt_mentor,
+            stored_prompt_files=stored_files_for_mentor(prompt_mentor["slug"]),
+            prompt_clean_url=url_for(
+                "prompt_library",
+                prompt_mentor=prompt_mentor["slug"],
+            ),
             reset_on_refresh=True,
         )
     )
     response.headers["X-Prompt-Run-Id"] = run_id
     return response
+
+
+@app.post("/delete-mentor")
+def delete_mentor():
+    selected_slug = request.form.get("selected_prompt_mentor", "").strip().lower()
+    if not selected_slug:
+        return render_prompt_library(error="Please select a mentor to delete."), 400
+    try:
+        delete_prompt_mentor(selected_slug)
+    except ValueError as exc:
+        return render_prompt_library(error=str(exc)), 400
+    return redirect(url_for("prompt_library"))
 
 
 @app.get("/download/<run_id>/<kind>")
@@ -669,12 +915,15 @@ def feedback():
             selected_type=kind,
             selected_mentor=mentor_id,
         )
-    except (OSError, ValueError, OpenAIError, requests.RequestException) as exc:
+    except (OSError, ValueError, OpenAIError, AnthropicError, requests.RequestException) as exc:
         app.logger.exception("Feedback generation failed: %s", exc)
+        provider = os.getenv("MODEL_PROVIDER", "").strip().lower()
         if isinstance(exc, ValueError):
             message = str(exc)
-        elif os.getenv("MODEL_PROVIDER", "").strip().lower() == "ollama":
+        elif provider == "ollama":
             message = "We couldn't reach Ollama. Check that Ollama is running and the model is installed."
+        elif provider in {"claude", "anthropic"}:
+            message = "We couldn't reach Claude. Check the Anthropic API key and internet connection."
         else:
             message = "We couldn't reach OpenAI. Check the API key and internet connection."
         return render_home(
@@ -709,7 +958,7 @@ def api_generate():
         return jsonify({"error": "Please choose an available mentor."}), 400
     try:
         return jsonify({"output": call_model(prompt, mentor_id=mentor_id)})
-    except (OpenAIError, ValueError, requests.RequestException) as exc:
+    except (OpenAIError, AnthropicError, ValueError, requests.RequestException) as exc:
         app.logger.exception("Model request failed: %s", exc)
         return jsonify({"error": "We couldn't reach the configured model."}), 502
 

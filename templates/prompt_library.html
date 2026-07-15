@@ -13,7 +13,7 @@
       <a class="brand" href="{{ url_for('home') }}" aria-label="Promptly home"><span class="brand-mark">P</span><span>Promptly</span></a>
       <div class="nav-actions">
         <a class="nav-link nav-link-boxed" href="{{ url_for('home') }}"><span>&larr;</span> Feedback workspace</a>
-        <span class="status"><i></i>{% if model_provider == 'ollama' %}Local Qwen extraction{% elif model_provider == 'openai' %}OpenAI extraction{% else %}Local extraction{% endif %}</span>
+        <span class="status"><i></i>{% if model_provider == 'ollama' %}Local Qwen extraction{% elif model_provider == 'openai' %}OpenAI extraction{% elif model_provider in ['claude', 'anthropic'] %}Claude extraction{% else %}Local extraction{% endif %}</span>
       </div>
     </nav>
 
@@ -32,10 +32,44 @@
           <h2 id="prompt-library-title">Upload examples by review category</h2>
           <p>Choose one or more categories. Each category produces its own reusable prompt.</p>
         </div>
-        <span class="local-badge">{% if model_provider == 'ollama' %}Local Qwen extraction{% elif model_provider == 'openai' %}OpenAI extraction{% else %}Deterministic local extraction{% endif %}</span>
+        <span class="local-badge">{% if model_provider == 'ollama' %}Local Qwen extraction{% elif model_provider == 'openai' %}OpenAI extraction{% elif model_provider in ['claude', 'anthropic'] %}Claude extraction{% else %}Deterministic local extraction{% endif %}</span>
       </div>
 
       <form method="post" action="{{ url_for('generate_prompts') }}" enctype="multipart/form-data" class="prompt-library-form">
+        <div class="mentor-library-manager" aria-label="PI-style prompt library manager">
+          <div class="mentor-selector">
+            <label>Select an existing library
+              <select name="selected_prompt_mentor" data-selected-mentor data-mentor-home-url="{{ url_for('prompt_library') }}">
+                <option value="">No library selected</option>
+                {% for mentor in prompt_mentors %}
+                  <option value="{{ mentor.slug }}" {% if mentor.slug == selected_prompt_mentor %}selected{% endif %}>{{ mentor.name }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <button
+              class="delete-mentor-button"
+              type="submit"
+              formaction="{{ url_for('delete_mentor') }}"
+              formmethod="post"
+              formnovalidate
+              data-delete-mentor-button
+              {% if not selected_prompt_mentor %}hidden{% endif %}
+            >Delete library</button>
+          </div>
+          <div class="mentor-creator" data-mentor-creator {% if selected_prompt_mentor %}hidden{% endif %}>
+            <label>Create a prompt library
+              <input type="text" name="prompt_mentor_name" maxlength="80" placeholder="e.g. Lab mentor">
+            </label>
+          </div>
+          <p class="mentor-library-note">
+            {% if selected_prompt_mentor_profile %}
+              Active library: <strong>{{ selected_prompt_mentor_profile.name }}</strong>. Uploads accumulate here and prompt TXT files update each time you generate.
+            {% else %}
+              Create a named library or select an existing one. Its reference files and generated prompts stay together on this computer.
+            {% endif %}
+          </p>
+        </div>
+
         <div class="reference-choices" aria-label="PI-style reference categories">
           {% for mode, group in reference_upload_groups.items() %}
             <label class="reference-choice">
@@ -46,11 +80,18 @@
               <span class="selected-files" aria-live="polite">
                 <span class="selected-summary"><span class="selected-check" aria-hidden="true">&#10003;</span><span data-file-summary>No files selected</span></span>
                 <span class="selected-file-list" data-file-list></span>
+                {% if stored_prompt_files[mode] %}
+                  <span class="stored-file-list" aria-label="Files already stored in this library">
+                    {% for filename in stored_prompt_files[mode] %}
+                      <span class="selected-file-name stored-file-name">{{ filename }}</span>
+                    {% endfor %}
+                  </span>
+                {% endif %}
               </span>
             </label>
           {% endfor %}
         </div>
-        <p class="privacy-note">Supported: {{ supported_reference_extensions }}. Reference files are processed during this request; generated TXT prompts are saved under the local <code>outputs</code> folder.</p>
+        <p class="privacy-note">Supported: {{ supported_reference_extensions }}. Reference files and stable generated TXT prompts are stored only in the selected local library; each run also creates a downloadable copy under <code>outputs</code>.</p>
         <button type="submit" class="primary-button prompt-generate-button">Generate reusable prompts <span>&rarr;</span></button>
       </form>
     </section>
@@ -75,7 +116,7 @@
             </article>
           {% endfor %}
         </div>
-        <p class="local-output-note">Saved locally in <code>{{ prompt_output_location }}</code>.</p>
+        <p class="local-output-note">Library prompts updated in <code>{{ prompt_output_location }}</code>.{% if prompt_run_location %} Downloadable run copy: <code>{{ prompt_run_location }}</code>.{% endif %}</p>
       </section>
     {% endif %}
 
@@ -85,7 +126,7 @@
   {% if reset_on_refresh %}
     <script>
       (function () {
-        var libraryUrl = "{{ url_for('prompt_library') }}";
+        var libraryUrl = {{ prompt_clean_url|tojson }};
         var navigation = performance.getEntriesByType && performance.getEntriesByType("navigation")[0];
         var isReload = navigation ? navigation.type === "reload" : performance.navigation && performance.navigation.type === 1;
         if (isReload) {

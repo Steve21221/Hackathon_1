@@ -11,7 +11,7 @@
   <main>
     <nav class="nav" aria-label="Main navigation">
       <a class="brand" href="{{ url_for('home') }}" aria-label="Promptly home"><span class="brand-mark">P</span><span>Promptly</span></a>
-      <div class="nav-actions"><a class="nav-link nav-link-boxed" href="{{ url_for('prompt_library') }}">Build prompt library <span>&rarr;</span></a><span class="status"><i></i> Python &middot; {% if model_provider == 'ollama' %}local Ollama{% elif model_provider == 'openai' %}OpenAI{% else %}demo mode{% endif %}</span></div>
+      <div class="nav-actions"><a class="nav-link nav-link-boxed" href="{{ url_for('prompt_library') }}">Build prompt library <span>&rarr;</span></a><span class="status"><i></i> Python &middot; {% if model_provider == 'ollama' %}local Ollama{% elif model_provider == 'openai' %}OpenAI{% elif model_provider in ['claude', 'anthropic'] %}Claude{% else %}demo mode{% endif %}</span></div>
     </nav>
 
     <section class="hero">
@@ -73,7 +73,7 @@
             <button type="submit">Get mentor feedback <span>&rarr;</span></button>
           </form>
         </article>
-        <p class="privacy-note">Files are not saved by this website. {% if model_provider == 'ollama' %}With Ollama, extracted content stays on this computer.{% elif model_provider == 'openai' %}Extracted content is sent to OpenAI for feedback.{% else %}Demo mode makes no external model request.{% endif %} Maximum file size: 20 MB.</p>
+        <p class="privacy-note">Files are not saved by this website. {% if model_provider == 'ollama' %}With Ollama, extracted content stays on this computer.{% elif model_provider == 'openai' %}Extracted content is sent to OpenAI for feedback.{% elif model_provider in ['claude', 'anthropic'] %}Extracted content is sent to Anthropic Claude for feedback.{% else %}Demo mode makes no external model request.{% endif %} Maximum file size: 20 MB.</p>
       {% else %}
         <div class="choose-prompt"><span>&uarr;</span><p>Select a feedback category to continue.</p></div>
       {% endif %}

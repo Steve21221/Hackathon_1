@@ -1,6 +1,6 @@
 # Promptly - Python local AI feedback website
 
-Promptly is a local-first Python website for uploading work and receiving category-specific, mentor-style feedback. It can use the open-source Qwen 3.5 model through Ollama entirely on the user's computer, with OpenAI available as an optional paid alternative. The application logic runs in Python with Flask; a small JavaScript enhancement displays the names of selected PI-style reference files.
+Promptly is a local-first Python website for uploading work and receiving category-specific, mentor-style feedback. It can use the open-source Qwen 3.5 model through Ollama entirely on the user's computer, with OpenAI or Anthropic Claude available as optional paid API alternatives. The project does not train or fine-tune models; it only sends extracted text to a selected inference provider. Application logic runs in Python with Flask, while a small JavaScript enhancement displays selected PI-style reference files.
 
 ## Supported files
 
@@ -18,9 +18,9 @@ The separate `/prompt-library` page integrates the `xianke-pi-style-workspace` e
 - Talks, presentations, and slides
 - Papers and proposals
 
-Reference uploads support `.pdf`, `.docx`, `.pptx`, `.txt`, and `.md`. Promptly extracts text, splits it into useful review units, identifies recurring concerns and review patterns, and builds one reusable prompt per uploaded category.
+Reference uploads support `.pdf`, `.docx`, `.pptx`, `.txt`, and `.md`. Create a named prompt library for a mentor or select an existing one; Promptly keeps that library's reference files together, extracts useful review units, identifies recurring concerns and review patterns, and builds one reusable prompt per uploaded category. Libraries can be refreshed with more files or deleted from the page.
 
-When `MODEL_PROVIDER=ollama` or `MODEL_PROVIDER=openai`, the configured model performs a two-step process: it first distills reusable advisor moves without copying project-specific details, then writes a general-purpose prompt. Demo mode uses the deterministic local builder so the workflow remains usable without a model connection.
+When `MODEL_PROVIDER=ollama`, `MODEL_PROVIDER=openai`, or `MODEL_PROVIDER=claude`, the configured model performs a two-step process: it first distills reusable advisor moves without copying project-specific details, then writes a general-purpose prompt. Demo mode uses the deterministic local builder so the workflow remains usable without a model connection.
 
 Each run saves TXT files locally under:
 
@@ -28,7 +28,7 @@ Each run saves TXT files locally under:
 outputs/pi_style_prompts_<run-id>/
 ```
 
-The page provides individual downloads and a combined `all_pi_style_prompts.txt` file. Generated outputs are ignored by Git.
+The stable prompt files for each library are updated under `mentor_files/<library-slug>/`, while the run folder provides individual downloads and a combined `all_pi_style_prompts.txt` file. Reference libraries and generated outputs are ignored by Git.
 
 ## Feedback mentors
 
@@ -178,6 +178,31 @@ OPENAI_MODEL=gpt-5-mini
 
 The application extracts text from the upload in memory, then sends the extracted content—not the original file—to OpenAI. The request asks OpenAI not to store the response (`store=False`) and caps generated output at 2,000 tokens. Review your organization's OpenAI data and retention requirements before using confidential or unpublished work.
 
+## Optional: connect Claude (Anthropic)
+
+This integration uses the Anthropic Messages API. API usage may cost money.
+
+1. Create an API key in your [Anthropic Console](https://console.anthropic.com/).
+2. In the project folder, create your private `.env` file if it does not already exist:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+3. Open `.env` and set:
+
+```text
+MODEL_PROVIDER=claude
+ANTHROPIC_API_KEY=your-private-key-here
+CLAUDE_MODEL=claude-sonnet-4-5
+```
+
+`MODEL_PROVIDER=anthropic` is also accepted. Change `CLAUDE_MODEL` if you prefer another Claude model available on your account.
+
+4. Restart the website after changing `.env`.
+
+The application extracts text from the upload in memory, then sends the extracted content—not the original file—to Anthropic. Generated output is capped at 2,000 tokens. Review your organization's Anthropic data and retention requirements before using confidential or unpublished work.
+
 ## Mentor prompt contributor workflow
 
 The prompt contributor does not need to edit the Flask routes or file extraction code.
@@ -194,6 +219,7 @@ Promptly extracts the uploaded file's text, identifies the selected feedback cat
 
 - `ollama`: a local Qwen model; no API key or per-token charge.
 - `openai`: the OpenAI Responses API; requires an API key and incurs API usage charges.
+- `claude` (or `anthropic`): the Anthropic Messages API; requires an API key and incurs API usage charges.
 - `demo`: no model request; returns a local confirmation message.
 
 Secrets stay on the Python server and are never sent to the browser. The generated final answer is returned to the Mentor feedback panel.
