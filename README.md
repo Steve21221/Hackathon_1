@@ -1,20 +1,26 @@
 ﻿# Hackathon — Local PI Style Prompt Workspace
 
-Hackathon is a local Flask web app for building reusable PI-style review prompts from your own reference materials. It helps you upload previous meeting notes, slide feedback, manuscript comments, and related documents, then generates mode-specific prompt files that can be reused for future research feedback.
+Hackathon is a local Flask web app for building reusable PI-style review prompts from your own reference materials. It helps you create/select mentors, organize each mentor's raw materials by review mode, and generate mode-specific prompt files that can be reused for future research feedback.
 
 The current workflow is designed for **local-first** use:
 
 - The web app runs on `http://127.0.0.1:5000/`.
-- Uploaded files are read locally by the Flask app.
+- Uploaded files are copied into a private local `mentor_files/` library.
 - PI-style prompt generation can run locally through Ollama/Llama.
-- Generated prompt `.txt` files are saved locally under `outputs/<run_id>/`.
-- `.env` and generated outputs are ignored by git.
+- Each mentor's latest prompt `.txt` files are updated in that mentor folder every time you generate.
+- Per-run copies are also saved under `outputs/<run_id>/`.
+- `.env`, `mentor_files/`, and generated outputs are ignored by git.
 
 ## Main features
 
 ### 1. Build Your PI Style Library
 
-Upload reference materials into three PI-review modes:
+At the top of the page, use **Build Your PI Style Library** to either:
+
+1. **Create Your Mentor** — type a new mentor name, then generate prompts once to create the local mentor folder.
+2. **Select existing mentor** — choose a mentor that already exists in your local `mentor_files/` library.
+
+Each mentor has three PI-review modes:
 
 | Mode | What to upload | What the app learns |
 | --- | --- | --- |
@@ -22,23 +28,62 @@ Upload reference materials into three PI-review modes:
 | Talks / Presentations / Slides | Slide drafts, talk feedback, presentation notes, figure sets | Audience-first storytelling, title/significance framing, citation discipline, labels/annotations, visual consistency, takeaway messages, deletion of weak visuals, and concrete slide-level edits |
 | Papers / Proposals | Manuscript feedback, proposal comments, figure-set feedback, paper drafts | Practical value, central claim, coherent argument, evidence/context support, figures proving claims, claim-evidence alignment, and concrete manuscript revisions |
 
-After clicking **Generate PI-Style Prompts**, the app shows concise prompt cards in the browser and saves prompt files locally.
+When you click **Generate PI-Style Prompts**, the app reads **all saved files for the selected mentor**, not only the files chosen in the current upload action.
 
-### 2. Local prompt TXT outputs
+### 2. Local mentor library structure
 
-Every prompt-generation run creates a folder like:
+Mentor data is stored locally under:
+
+```text
+mentor_files/
+```
+
+Example:
+
+```text
+mentor_files/
+  dr-nanshu-lu/
+    mentor.json
+    meeting_research_pi/
+      raw/
+        2026-07-07_MM.pdf
+      prompt.txt
+    slides_talk_pi/
+      raw/
+        Feedback on talk slides_251010.txt
+      prompt.txt
+    paper_proposal_pi/
+      raw/
+        Figure_set_feedback.docx
+      prompt.txt
+    all_pi_style_prompts.txt
+```
+
+Important behavior:
+
+- Uploaded raw files are copied into the selected mentor's `raw/` folder.
+- The page shows the files already stored for the selected mentor.
+- `prompt.txt` files are **updated/overwritten** each time you generate, so they always represent the latest mentor library.
+- `mentor_files/` is ignored by git because it may contain private reference materials.
+
+### 3. Prompt TXT outputs
+
+Each generation updates the selected mentor's stable files:
+
+```text
+mentor_files/<mentor-slug>/meeting_research_pi/prompt.txt
+mentor_files/<mentor-slug>/slides_talk_pi/prompt.txt
+mentor_files/<mentor-slug>/paper_proposal_pi/prompt.txt
+mentor_files/<mentor-slug>/all_pi_style_prompts.txt
+```
+
+The app also keeps a per-run copy under:
 
 ```text
 outputs/<run_id>/
 ```
 
-For example:
-
-```text
-outputs/pi_style_library_pi_prompts_ab12cd34/
-```
-
-Inside that folder you will find:
+with files such as:
 
 ```text
 meeting_research_pi_prompt.txt
@@ -47,13 +92,7 @@ paper_proposal_pi_prompt.txt
 all_pi_style_prompts.txt
 ```
 
-The result page also displays the exact local path after generation:
-
-```text
-TXT files saved locally in ...\outputs\<run_id>
-```
-
-### 3. Review a document/transcript/PowerPoint
+### 4. Review a document/transcript/PowerPoint
 
 The lower part of the page keeps a simple local upload flow for:
 
@@ -65,14 +104,13 @@ This reads a target file locally and returns mentor-style feedback. By default, 
 
 ## What runs locally?
 
-The app is local-first:
-
 | Component | Local? | Notes |
 | --- | --- | --- |
 | Flask web app | Yes | Runs at `127.0.0.1:5000` |
 | File upload and text extraction | Yes | Files are processed by local Python code |
+| Mentor raw-file library | Yes | Saved under local `mentor_files/`; ignored by git |
 | PI prompt generation | Yes, when Ollama is enabled | Uses local Ollama at `127.0.0.1:11434` |
-| Generated prompt TXT files | Yes | Saved under `outputs/<run_id>/` |
+| Generated prompt TXT files | Yes | Stable files under `mentor_files/<mentor>/`; run copies under `outputs/<run_id>/` |
 | Feedback demo route | Yes | Returns local demo feedback when no `MODEL_API_URL` is set |
 | External model feedback | Optional | Only used if you explicitly set `MODEL_API_URL` |
 
@@ -151,20 +189,28 @@ http://127.0.0.1:5000/
 
 1. Open `http://127.0.0.1:5000/`.
 2. Go to **Build Your PI Style Library**.
-3. Upload one or more reference files in any of the three categories:
-   - Research Ideas / Meeting Minutes
-   - Talks / Presentations / Slides
-   - Papers / Proposals
-4. Click **Generate PI-Style Prompts**.
-5. Review the generated prompt cards on the page.
-6. Look for the line `TXT files saved locally in ...` to find the prompt folder.
-7. Open the generated `.txt` files from `outputs/<run_id>/` and copy them into your downstream feedback workflow.
+3. Create a mentor or select an existing mentor.
+4. Upload one or more reference files in any of the three categories.
+5. Click **Generate PI-Style Prompts**.
+6. Review the generated prompt cards on the page.
+7. Open the updated `.txt` files inside `mentor_files/<mentor-slug>/` for the latest version.
 
 You can upload multiple files per category. There is no fixed file-count limit in code, but the total request size is limited to 20 MB. In practice, 3–10 modest files per category is a good starting point.
 
 ## Refresh behavior
 
-After prompt generation or feedback generation, the result is shown once. If you refresh the browser, the page resets to the clean home view so old `PI Style Prompts Ready` results do not stay on screen or get accidentally resubmitted.
+After prompt generation, the `PI Style Prompts Ready` cards are a temporary result view. The browser history is changed to the selected mentor's clean library URL, such as:
+
+```text
+/?prompt_mentor=dr-nanshu-lu#prompt-library
+```
+
+If you refresh:
+
+- the selected mentor stays selected;
+- saved file lists remain visible;
+- the local `mentor_files/<mentor>/.../prompt.txt` files remain saved;
+- only the temporary `PI Style Prompts Ready` section disappears.
 
 ## Development
 
@@ -180,12 +226,12 @@ Run tests:
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-At the time of this update, the test suite contains route, reader, prompt-generation, UI-rendering, and local-output tests.
+The test suite contains route, reader, prompt-generation, UI-rendering, mentor-library, refresh-behavior, and local-output tests.
 
 ## Project structure
 
 ```text
-app.py                         Flask app, upload routes, local/Ollama prompt generation, downloads
+app.py                         Flask app, upload routes, local/Ollama prompt generation, mentor library, downloads
 raw_materials/reader.py        Extract text from PDF/DOCX/PPTX/TXT/MD uploads
 raw_materials/chunker.py       Split extracted text into chunks
 raw_materials/jsonl_builder.py Build structured JSONL-style records for legacy workflow
@@ -194,14 +240,16 @@ templates/index.html           Main web UI
 static/style.css               UI styling
 static/library_uploads.js      Multi-file upload card behavior
 tests/                         Unit and route tests
-outputs/                       Local generated prompt/output files; ignored by git except .gitkeep
+mentor_files/                  Private local mentor raw files and latest prompts; ignored by git
+outputs/                       Local generated prompt/output run copies; ignored by git except .gitkeep
 ```
 
 ## Privacy and local data notes
 
-- Uploaded files are processed locally during the request.
-- Generated outputs are written to `outputs/<run_id>/`.
-- `outputs/`, `.env`, `.venv`, caches, and temporary reference folders are ignored by git.
+- Uploaded PI Style Library files are copied to local `mentor_files/` so the mentor library can persist after refresh.
+- Generated stable prompts are written to `mentor_files/<mentor-slug>/`.
+- Per-run prompt copies are written to `outputs/<run_id>/`.
+- `mentor_files/`, `outputs/`, `.env`, `.venv`, caches, and temporary reference folders are ignored by git.
 - Do not commit private reference files, API keys, or generated prompt-output folders.
 
 ## Acknowledgements

@@ -5,6 +5,7 @@ __pycache__/
 .env
 outputs/*
 !outputs/.gitkeep
+mentor_files/
 .tmp_docx_refs/
 .tmp_pdf_refs/
 docs/superpowers/

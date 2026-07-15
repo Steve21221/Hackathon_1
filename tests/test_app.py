@@ -7,7 +7,11 @@ from app import app, build_feedback_prompt
 
 def client_with_tmp_outputs(tmp_path):
     os.environ.pop("MODEL_API_URL", None)
-    app.config.update(TESTING=True, OUTPUT_DIR=tmp_path)
+    app.config.update(
+        TESTING=True,
+        OUTPUT_DIR=tmp_path / "outputs",
+        MENTOR_LIBRARY_DIR=tmp_path / "mentor_files",
+    )
     return app.test_client()
 
 
@@ -27,6 +31,9 @@ def test_home_page_uses_hackathon1_feedback_shell_and_keeps_pi_library(tmp_path)
     assert "PowerPoint" in html
     assert "Build Your PI Style Library" in html
     assert "Generate PI-Style Prompts" in html
+    assert "Create Your Mentor" in html
+    assert "Select existing mentor" in html
+    assert "Prompt files update in this mentor folder each time you generate." in html
     assert 'name="project_name"' not in html
     assert "Project name" not in html
     assert 'name="research_files"' in html and "multiple" in html
@@ -37,9 +44,9 @@ def test_home_page_uses_hackathon1_feedback_shell_and_keeps_pi_library(tmp_path)
     assert 'class="file-hint"' not in html
     assert "Supported:" in html
     assert html.index("Supported:") < html.index("Generate PI-Style Prompts")
-    assert "meeting_research_pi" not in html
-    assert "slides_talk_pi" not in html
-    assert "paper_proposal_pi" not in html
+    assert 'value="meeting_research_pi"' not in html
+    assert 'value="slides_talk_pi"' not in html
+    assert 'value="paper_proposal_pi"' not in html
     assert "Generate JSONL" not in html
     assert "legacy JSONL extractor" not in html
 
@@ -167,7 +174,7 @@ def test_generate_prompts_creates_three_txt_prompt_downloads(tmp_path):
     assert "TXT files saved locally in" in html
     assert "history.replaceState" in html
     assert "performance.getEntriesByType" in html
-    assert "window.location.replace" in html
+    assert "window.location.replace" not in html
     run_id = response.headers["X-Prompt-Run-Id"]
     assert run_id in html
 
@@ -177,6 +184,243 @@ def test_generate_prompts_creates_three_txt_prompt_downloads(tmp_path):
     body = download_response.data.decode("utf-8")
     assert "MODE: meeting_research_pi" in body
     assert "Clarify the next experiment" in body
+
+
+def test_generate_prompts_creates_local_mentor_folder_and_persists_uploads(tmp_path):
+    client = client_with_tmp_outputs(tmp_path)
+
+    response = client.post(
+        "/generate-prompts",
+        data={
+            "prompt_mentor_name": "Dr. Custom Mentor",
+            "research_files": (
+                BytesIO(b"Reframe the idea and define the next experiment."),
+                "meeting notes.txt",
+            ),
+            "slide_files": (
+                BytesIO(b"Every slide needs a clearer takeaway."),
+                "talk feedback.txt",
+            ),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    library_dir = tmp_path / "mentor_files" / "dr-custom-mentor"
+    assert (library_dir / "mentor.json").exists()
+    assert (library_dir / "meeting_research_pi" / "raw" / "meeting_notes.txt").exists()
+    assert (library_dir / "slides_talk_pi" / "raw" / "talk_feedback.txt").exists()
+    assert (library_dir / "meeting_research_pi" / "prompt.txt").exists()
+    assert (library_dir / "slides_talk_pi" / "prompt.txt").exists()
+    assert (library_dir / "all_pi_style_prompts.txt").exists()
+
+    html = response.data.decode("utf-8")
+    assert "Dr. Custom Mentor" in html
+    assert "meeting_notes.txt" in html
+    assert "talk_feedback.txt" in html
+    assert "TXT files updated locally in" in html
+
+
+def test_generate_prompts_uses_existing_mentor_files_without_reupload(tmp_path):
+    client = client_with_tmp_outputs(tmp_path)
+
+    first_response = client.post(
+        "/generate-prompts",
+        data={
+            "prompt_mentor_name": "Dr. Existing Mentor",
+            "research_files": (
+                BytesIO(b"The PI asks for missing controls and a decisive next experiment."),
+                "first.txt",
+            ),
+        },
+        content_type="multipart/form-data",
+    )
+    assert first_response.status_code == 200
+
+    second_response = client.post(
+        "/generate-prompts",
+        data={
+            "selected_prompt_mentor": "dr-existing-mentor",
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert second_response.status_code == 200
+    html = second_response.data.decode("utf-8")
+    assert "PI Style Prompts Ready" in html
+    assert "Research Ideas / Meeting Minutes" in html
+    assert "first.txt" in html
+    assert "Please upload at least one reference material file" not in html
+
+
+def test_prompt_txt_files_are_updated_not_accumulated_for_mentor(tmp_path):
+    client = client_with_tmp_outputs(tmp_path)
+
+    first_response = client.post(
+        "/generate-prompts",
+        data={
+            "prompt_mentor_name": "Dr. Stable TXT",
+            "research_files": (
+                BytesIO(b"First version asks for a falsifiable question."),
+                "first.txt",
+            ),
+        },
+        content_type="multipart/form-data",
+    )
+    assert first_response.status_code == 200
+
+    prompt_path = tmp_path / "mentor_files" / "dr-stable-txt" / "meeting_research_pi" / "prompt.txt"
+    first_mtime = prompt_path.stat().st_mtime_ns
+
+    second_response = client.post(
+        "/generate-prompts",
+        data={
+            "selected_prompt_mentor": "dr-stable-txt",
+            "research_files": (
+                BytesIO(b"Second version adds roadmap priorities and action items."),
+                "second.txt",
+            ),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert second_response.status_code == 200
+    assert prompt_path.exists()
+    assert prompt_path.stat().st_mtime_ns >= first_mtime
+    assert len(list((tmp_path / "mentor_files" / "dr-stable-txt" / "meeting_research_pi").glob("*_prompt.txt"))) == 0
+    assert "Second version" in prompt_path.read_text(encoding="utf-8")
+
+
+def test_refresh_preserves_selected_mentor_and_files_but_hides_prompt_results(tmp_path):
+    client = client_with_tmp_outputs(tmp_path)
+
+    client.post(
+        "/generate-prompts",
+        data={
+            "prompt_mentor_name": "Dr. Refresh Mentor",
+            "research_files": (
+                BytesIO(b"Refresh should keep the local mentor library."),
+                "refresh.txt",
+            ),
+        },
+        content_type="multipart/form-data",
+    )
+
+    response = client.get("/?prompt_mentor=dr-refresh-mentor")
+    html = response.data.decode("utf-8")
+
+    assert response.status_code == 200
+    assert "Dr. Refresh Mentor" in html
+    assert "refresh.txt" in html
+    assert "Stored in this mentor" not in html
+    assert "PI Style Prompts Ready" not in html
+    assert "prompt-output-title" not in html
+    assert "TXT files updated locally in" not in html
+
+
+def test_mentor_creator_is_prompted_when_no_existing_mentor_is_selected():
+    html = Path("templates/index.html").read_text(encoding="utf-8")
+    javascript = Path("static/library_uploads.js").read_text(encoding="utf-8")
+
+    assert 'data-selected-mentor' in html
+    assert 'data-mentor-home-url' in html
+    assert 'data-mentor-creator' in html
+    assert "toggleMentorCreator" in javascript
+    assert "creator.hidden = Boolean(select.value)" in javascript
+    assert "setAttribute('required', 'required')" in javascript
+    assert "removeAttribute('required')" in javascript
+
+
+def test_mentor_dropdown_syncs_existing_file_display():
+    javascript = Path("static/library_uploads.js").read_text(encoding="utf-8")
+
+    assert "handleMentorSelectionChange" in javascript
+    assert "clearStoredFileDisplays" in javascript
+    assert "window.location.assign" in javascript
+    assert "prompt_mentor=" in javascript
+    assert "stored-file-list" in javascript
+
+
+def test_delete_selected_mentor_removes_uploaded_files_and_prompts(tmp_path):
+    client = client_with_tmp_outputs(tmp_path)
+
+    create_response = client.post(
+        "/generate-prompts",
+        data={
+            "prompt_mentor_name": "Dr. Delete Mentor",
+            "research_files": (
+                BytesIO(b"Delete this mentor's raw file and prompt files."),
+                "delete_me.txt",
+            ),
+        },
+        content_type="multipart/form-data",
+    )
+    assert create_response.status_code == 200
+
+    mentor_dir = tmp_path / "mentor_files" / "dr-delete-mentor"
+    assert (mentor_dir / "meeting_research_pi" / "raw" / "delete_me.txt").exists()
+    assert (mentor_dir / "meeting_research_pi" / "prompt.txt").exists()
+    assert (mentor_dir / "all_pi_style_prompts.txt").exists()
+
+    delete_response = client.post(
+        "/delete-mentor",
+        data={"selected_prompt_mentor": "dr-delete-mentor"},
+        follow_redirects=True,
+    )
+
+    assert delete_response.status_code == 200
+    assert not mentor_dir.exists()
+    html = delete_response.data.decode("utf-8")
+    assert "Dr. Delete Mentor" not in html
+    assert "delete_me.txt" not in html
+    assert "No mentor selected" in html
+
+
+def test_home_page_has_delete_mentor_button_when_mentor_selected(tmp_path):
+    client = client_with_tmp_outputs(tmp_path)
+
+    client.post(
+        "/generate-prompts",
+        data={
+            "prompt_mentor_name": "Dr. UI Delete",
+            "research_files": (
+                BytesIO(b"Show delete button for this selected mentor."),
+                "ui_delete.txt",
+            ),
+        },
+        content_type="multipart/form-data",
+    )
+
+    response = client.get("/?prompt_mentor=dr-ui-delete")
+    html = response.data.decode("utf-8")
+    javascript = Path("static/library_uploads.js").read_text(encoding="utf-8")
+
+    assert 'formaction="/delete-mentor"' in html
+    assert 'data-delete-mentor-button' in html
+    assert "Delete mentor" in html
+    assert "toggleDeleteMentorButton" in javascript
+    assert "button.hidden = !select.value" in javascript
+
+
+def test_delete_mentor_rejects_missing_or_invalid_selection(tmp_path):
+    client = client_with_tmp_outputs(tmp_path)
+
+    missing_response = client.post("/delete-mentor", data={})
+    invalid_response = client.post(
+        "/delete-mentor",
+        data={"selected_prompt_mentor": "../outside"},
+    )
+
+    assert missing_response.status_code == 400
+    assert invalid_response.status_code == 400
+    assert b"Please select a mentor to delete" in missing_response.data
+    assert b"Please select an existing mentor to delete" in invalid_response.data
+
+
+def test_mentor_files_are_ignored_by_git():
+    gitignore = Path(".gitignore").read_text(encoding="utf-8")
+
+    assert "mentor_files/" in gitignore
 
 
 def test_generated_prompt_txt_files_are_saved_under_run_output_dir(tmp_path):
@@ -194,7 +438,7 @@ def test_generated_prompt_txt_files_are_saved_under_run_output_dir(tmp_path):
     )
 
     run_id = response.headers["X-Prompt-Run-Id"]
-    run_dir = tmp_path / run_id
+    run_dir = tmp_path / "outputs" / run_id
 
     assert (run_dir / "meeting_research_pi_prompt.txt").exists()
     assert (run_dir / "all_pi_style_prompts.txt").exists()

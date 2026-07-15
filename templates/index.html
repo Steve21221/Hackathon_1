@@ -31,6 +31,40 @@
       </div>
 
       <form method="post" action="{{ url_for('generate_prompts') }}" enctype="multipart/form-data" class="prompt-library-form">
+        <div class="mentor-library-manager" aria-label="PI style mentor library manager">
+          <div class="mentor-selector">
+            <label>Select existing mentor
+              <select name="selected_prompt_mentor" data-selected-mentor data-mentor-home-url="{{ url_for('home') }}">
+                <option value="">No mentor selected</option>
+                {% for mentor in prompt_mentors %}
+                  <option value="{{ mentor.slug }}" {% if mentor.slug == selected_prompt_mentor %}selected{% endif %}>{{ mentor.name }}</option>
+                {% endfor %}
+              </select>
+            </label>
+            <button
+              class="delete-mentor-button"
+              type="submit"
+              formaction="{{ url_for('delete_mentor') }}"
+              formmethod="post"
+              formnovalidate
+              data-delete-mentor-button
+              {% if not selected_prompt_mentor %}hidden{% endif %}
+            >Delete mentor</button>
+          </div>
+          <div class="mentor-creator" data-mentor-creator {% if selected_prompt_mentor %}hidden{% endif %}>
+            <label>Create Your Mentor
+              <input type="text" name="prompt_mentor_name" maxlength="80" placeholder="e.g. Lab Mentor">
+            </label>
+          </div>
+          <p class="mentor-library-note">
+            {% if selected_prompt_mentor_profile %}
+              Active mentor: <strong>{{ selected_prompt_mentor_profile.name }}</strong>. Prompt files update in this mentor folder each time you generate.
+            {% else %}
+              Create a mentor or select an existing one. Prompt files update in this mentor folder each time you generate.
+            {% endif %}
+          </p>
+        </div>
+
         <div class="reference-choices" aria-label="Reference raw material categories">
           {% for mode, group in reference_upload_groups.items() %}
             <label class="reference-choice">
@@ -41,6 +75,13 @@
               <span class="selected-files" aria-live="polite">
                 <span class="selected-summary"><span class="selected-check" aria-hidden="true">&#10003;</span><span data-file-summary>No files selected yet</span></span>
                 <span class="selected-file-list" data-file-list></span>
+                {% if stored_prompt_files[mode] %}
+                  <span class="stored-file-list">
+                    {% for filename in stored_prompt_files[mode] %}
+                      <span class="selected-file-name stored-file-name">{{ filename }}</span>
+                    {% endfor %}
+                  </span>
+                {% endif %}
               </span>
             </label>
           {% endfor %}
@@ -58,7 +99,7 @@
             <h2 id="prompt-output-title">{{ prompt_message }}</h2>
             <p>Three concise prompts, one for each uploaded reference category.</p>
             {% if prompt_output_location %}
-              <p class="local-output-note">TXT files saved locally in <code>{{ prompt_output_location }}</code>.</p>
+              <p class="local-output-note">TXT files saved locally in <code>{{ prompt_output_location }}</code>. TXT files updated locally in this mentor folder each time you generate.{% if prompt_run_location %} Run copy: <code>{{ prompt_run_location }}</code>.{% endif %}</p>
             {% endif %}
           </div>
         </div>
@@ -133,14 +174,17 @@
     <script>
       (function () {
         var homeUrl = "{{ url_for('home') }}";
+        var cleanUrl = "{{ prompt_clean_url }}";
         var navigation = performance.getEntriesByType && performance.getEntriesByType("navigation")[0];
         var isReload = navigation ? navigation.type === "reload" : performance.navigation && performance.navigation.type === 1;
         if (isReload) {
-          window.location.replace(homeUrl);
-          return;
+          var promptOutput = document.querySelector('.prompt-output-section');
+          if (promptOutput) {
+            promptOutput.remove();
+          }
         }
         if (window.history && window.history.replaceState) {
-          window.history.replaceState(null, "", homeUrl);
+          window.history.replaceState(null, "", cleanUrl || homeUrl);
         }
       }());
     </script>

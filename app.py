@@ -3,6 +3,7 @@
 import os
 import re
 import secrets
+import shutil
 import time
 import json
 import html
@@ -13,7 +14,7 @@ from urllib import request as urllib_request
 from urllib.error import URLError
 
 from docx import Document
-from flask import Flask, Response, abort, jsonify, render_template, request, send_file
+from flask import Flask, Response, abort, jsonify, redirect, render_template, request, send_file, url_for
 from markupsafe import Markup
 from pptx import Presentation
 from pypdf import PdfReader
@@ -83,6 +84,7 @@ load_dotenv()
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024
 app.config["OUTPUT_DIR"] = Path(__file__).parent / "outputs"
+app.config["MENTOR_LIBRARY_DIR"] = Path(__file__).parent / "mentor_files"
 
 MAX_PROMPT_LENGTH = 4_000
 MAX_EXTRACTED_TEXT = 100_000
@@ -515,7 +517,164 @@ def get_output_dir() -> Path:
     return Path(app.config["OUTPUT_DIR"])
 
 
+def get_mentor_library_dir() -> Path:
+    return Path(app.config["MENTOR_LIBRARY_DIR"])
+
+
+def mentor_slug(name: str) -> str:
+    words = re.findall(r"[A-Za-z0-9]+", name.lower())
+    return "-".join(words[:8]) if words else "mentor"
+
+
+def mentor_dir(slug: str) -> Path:
+    safe_slug = mentor_slug(slug)
+    return get_mentor_library_dir() / safe_slug
+
+
+def mode_dir_for_mentor(slug: str, mode: str) -> Path:
+    return mentor_dir(slug) / mode
+
+
+def ensure_prompt_mentor(name: str) -> dict[str, str]:
+    display_name = name.strip() or "PI Style Library"
+    slug = mentor_slug(display_name)
+    directory = mentor_dir(slug)
+    directory.mkdir(parents=True, exist_ok=True)
+    for mode in MODE_DEFINITIONS:
+        (directory / mode / "raw").mkdir(parents=True, exist_ok=True)
+    metadata = {"slug": slug, "name": display_name}
+    (directory / "mentor.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    return metadata
+
+
+def read_prompt_mentor(slug: str) -> dict[str, str] | None:
+    safe_slug = mentor_slug(slug)
+    directory = mentor_dir(safe_slug)
+    metadata_path = directory / "mentor.json"
+    if not metadata_path.exists():
+        return None
+    try:
+        data = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {"slug": safe_slug, "name": safe_slug.replace("-", " ").title()}
+    return {
+        "slug": str(data.get("slug") or safe_slug),
+        "name": str(data.get("name") or safe_slug.replace("-", " ").title()),
+    }
+
+
+def list_prompt_mentors() -> list[dict[str, str]]:
+    root = get_mentor_library_dir()
+    if not root.exists():
+        return []
+    mentors: list[dict[str, str]] = []
+    for child in sorted(root.iterdir(), key=lambda path: path.name.lower()):
+        if not child.is_dir():
+            continue
+        mentor = read_prompt_mentor(child.name)
+        if mentor:
+            mentors.append(mentor)
+    return mentors
+
+
+def resolve_prompt_mentor(selected_slug: str = "", new_name: str = "") -> dict[str, str]:
+    if new_name.strip():
+        return ensure_prompt_mentor(new_name)
+    if selected_slug.strip():
+        existing = read_prompt_mentor(selected_slug)
+        if existing:
+            return existing
+        raise ValueError("Please select an existing mentor or create a new one.")
+    return ensure_prompt_mentor("PI Style Library")
+
+
+def stored_files_for_mentor(slug: str) -> dict[str, list[str]]:
+    if not slug:
+        return {mode: [] for mode in MODE_DEFINITIONS}
+    files_by_mode: dict[str, list[str]] = {}
+    for mode in MODE_DEFINITIONS:
+        raw_dir = mode_dir_for_mentor(slug, mode) / "raw"
+        files_by_mode[mode] = (
+            sorted(path.name for path in raw_dir.iterdir() if path.is_file())
+            if raw_dir.exists()
+            else []
+        )
+    return files_by_mode
+
+
+def save_uploaded_reference_files(slug: str) -> None:
+    for mode, config in REFERENCE_UPLOAD_GROUPS.items():
+        raw_dir = mode_dir_for_mentor(slug, mode) / "raw"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        files = [file for file in request.files.getlist(config["field"]) if file and file.filename]
+        for uploaded_file in files:
+            filename = safe_uploaded_filename(uploaded_file)
+            if not is_supported_filename(filename):
+                raise ValueError(
+                    f"Unsupported file type for {config['label']}: {filename}. "
+                    f"Use one of: {', '.join(sorted(SUPPORTED_EXTENSIONS))}."
+                )
+            (raw_dir / filename).write_bytes(uploaded_file.read())
+
+
+def build_grouped_reference_chunks_from_mentor(slug: str) -> dict[str, list[dict]]:
+    grouped_chunks: dict[str, list[dict]] = {mode: [] for mode in MODE_DEFINITIONS}
+    for mode, config in REFERENCE_UPLOAD_GROUPS.items():
+        raw_dir = mode_dir_for_mentor(slug, mode) / "raw"
+        if not raw_dir.exists():
+            continue
+        for path in sorted(raw_dir.iterdir(), key=lambda item: item.name.lower()):
+            if not path.is_file():
+                continue
+            if not is_supported_filename(path.name):
+                raise ValueError(
+                    f"Unsupported file type for {config['label']}: {path.name}. "
+                    f"Use one of: {', '.join(sorted(SUPPORTED_EXTENSIONS))}."
+                )
+            text = extract_text_from_upload(path.read_bytes(), path.name)
+            chunks = chunk_text(text, mode)
+            if chunks:
+                grouped_chunks[mode].append({"source_file": path.name, "chunks": chunks})
+    return grouped_chunks
+
+
+def save_mentor_prompt_outputs(slug: str, artifacts: dict[str, PromptArtifact]) -> Path:
+    directory = mentor_dir(slug)
+    directory.mkdir(parents=True, exist_ok=True)
+    for mode, artifact in artifacts.items():
+        if artifact.record_count <= 0:
+            continue
+        mode_directory = mode_dir_for_mentor(slug, mode)
+        mode_directory.mkdir(parents=True, exist_ok=True)
+        (mode_directory / "prompt.txt").write_text(artifact.content, encoding="utf-8")
+    (directory / "all_pi_style_prompts.txt").write_text(
+        build_combined_prompt_text(artifacts),
+        encoding="utf-8",
+    )
+    return directory
+
+
+def delete_prompt_mentor(slug: str) -> None:
+    safe_slug = mentor_slug(slug)
+    if safe_slug != slug.strip().lower():
+        raise ValueError("Please select an existing mentor to delete.")
+    directory = mentor_dir(safe_slug).resolve()
+    root = get_mentor_library_dir().resolve()
+    if root not in directory.parents:
+        raise ValueError("Please select an existing mentor to delete.")
+    if not directory.exists() or read_prompt_mentor(safe_slug) is None:
+        raise ValueError("Please select an existing mentor to delete.")
+    shutil.rmtree(directory)
+
+
 def render_home(**context: Any):
+    prompt_mentors = list_prompt_mentors()
+    selected_prompt_mentor = context.get("selected_prompt_mentor", "")
+    if not selected_prompt_mentor:
+        selected_prompt_mentor = request.args.get("prompt_mentor", "").strip().lower()
+    if selected_prompt_mentor and not read_prompt_mentor(selected_prompt_mentor):
+        selected_prompt_mentor = ""
+    selected_prompt_mentor_profile = read_prompt_mentor(selected_prompt_mentor) if selected_prompt_mentor else None
     defaults = {
         "error": "",
         "feedback": "",
@@ -525,9 +684,17 @@ def render_home(**context: Any):
         "prompt_artifacts": [],
         "prompt_cards": [],
         "prompt_run_id": "",
+        "prompt_run_location": "",
         "prompt_output_location": "",
         "prompt_download_urls": {},
         "prompt_message": "",
+        "prompt_clean_url": url_for("home", prompt_mentor=selected_prompt_mentor) + "#prompt-library"
+        if selected_prompt_mentor
+        else url_for("home") + "#prompt-library",
+        "prompt_mentors": prompt_mentors,
+        "selected_prompt_mentor": selected_prompt_mentor,
+        "selected_prompt_mentor_profile": selected_prompt_mentor_profile,
+        "stored_prompt_files": stored_files_for_mentor(selected_prompt_mentor),
         "reset_on_refresh": False,
         "form": {
             "project_name": "",
@@ -558,21 +725,30 @@ def home():
     selected_mentor = request.args.get("mentor", DEFAULT_MENTOR_ID).strip().lower()
     if selected_mentor not in MENTORS:
         selected_mentor = DEFAULT_MENTOR_ID
-    return render_home(selected_type=selected_type, selected_mentor=selected_mentor)
+    selected_prompt_mentor = request.args.get("prompt_mentor", "").strip().lower()
+    return render_home(
+        selected_type=selected_type,
+        selected_mentor=selected_mentor,
+        selected_prompt_mentor=selected_prompt_mentor,
+    )
 
 
 @app.post("/generate-prompts")
 def generate_prompts():
-    project_name = request.form.get("project_name", "").strip() or "PI Style Library"
-
     try:
-        grouped_chunks = build_grouped_reference_chunks()
+        prompt_mentor = resolve_prompt_mentor(
+            selected_slug=request.form.get("selected_prompt_mentor", ""),
+            new_name=request.form.get("prompt_mentor_name", ""),
+        )
+        save_uploaded_reference_files(prompt_mentor["slug"])
+        grouped_chunks = build_grouped_reference_chunks_from_mentor(prompt_mentor["slug"])
     except ValueError as exc:
         return render_home(error=str(exc)), 400
 
     if not any(grouped_chunks[mode] for mode in grouped_chunks):
         return render_home(
             error="Please upload at least one reference material file.",
+            selected_prompt_mentor=prompt_mentor["slug"],
         ), 400
 
     artifacts = build_mode_prompt_artifacts(grouped_chunks)
@@ -596,8 +772,11 @@ def generate_prompts():
             llm_generated_prompts[mode] = llm_prompt
     if llm_generated_prompts:
         artifacts = build_mode_prompt_artifacts(grouped_chunks, generated_prompts=llm_generated_prompts)
+    project_name = prompt_mentor["name"]
     run_id = save_prompt_outputs(artifacts, project_name)
-    prompt_output_location = str(get_output_dir() / run_id)
+    mentor_output_location = save_mentor_prompt_outputs(prompt_mentor["slug"], artifacts)
+    prompt_output_location = str(mentor_output_location)
+    prompt_run_location = str(get_output_dir() / run_id)
     prompt_cards = [
         {
             "mode": mode,
@@ -617,14 +796,31 @@ def generate_prompts():
             prompt_artifacts=[artifacts[mode] for mode in MODE_DEFINITIONS],
             prompt_cards=prompt_cards,
             prompt_run_id=run_id,
+            prompt_run_location=prompt_run_location,
             prompt_output_location=prompt_output_location,
             prompt_download_urls=prompt_download_urls,
             prompt_message="PI Style Prompts Ready",
+            selected_prompt_mentor=prompt_mentor["slug"],
+            selected_prompt_mentor_profile=prompt_mentor,
+            stored_prompt_files=stored_files_for_mentor(prompt_mentor["slug"]),
+            prompt_clean_url=url_for("home", prompt_mentor=prompt_mentor["slug"]) + "#prompt-library",
             reset_on_refresh=True,
         )
     )
     response.headers["X-Prompt-Run-Id"] = run_id
     return response
+
+
+@app.post("/delete-mentor")
+def delete_mentor():
+    selected_slug = request.form.get("selected_prompt_mentor", "").strip().lower()
+    if not selected_slug:
+        return render_home(error="Please select a mentor to delete."), 400
+    try:
+        delete_prompt_mentor(selected_slug)
+    except ValueError as exc:
+        return render_home(error=str(exc)), 400
+    return redirect(url_for("home") + "#prompt-library")
 
 
 def compact_prompt_preview(artifact: PromptArtifact) -> str:
