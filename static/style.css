@@ -12,7 +12,8 @@ main { min-height:100vh; overflow:hidden; }
 .eyebrow { display:inline-flex; gap:8px; align-items:center; font-size:12px; text-transform:uppercase; letter-spacing:.15em; color:var(--green); font-weight:650; }
 .eyebrow span { font-size:16px; }
 h1 { font-family:Georgia,'Times New Roman',serif; font-weight:400; font-size:clamp(50px,6.5vw,82px); line-height:.96; letter-spacing:-.055em; margin:22px 0 25px; }
-h1 em { color:var(--green); font-weight:400; }
+h1 span,h1 em { display:block; }
+h1 em { color:var(--green); font-weight:400; margin-top:.16em; }
 .intro { color:#647067; max-width:680px; margin:auto; line-height:1.65; font-size:17px; }
 .notice { max-width:1124px; margin:0 auto 18px; padding:15px 18px; border-radius:12px; font-size:13px; line-height:1.5; }
 .notice.error { color:#863a31; background:#fff0ed; border:1px solid #efc7c0; }
@@ -22,9 +23,9 @@ h1 em { color:var(--green); font-weight:400; }
 .section-heading p { color:var(--muted); font-size:13px; margin:0; line-height:1.5; }
 .type-choices { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
 .type-choice { --accent:#315d46; --soft:#dce9dc; display:grid; grid-template-columns:46px 1fr auto; gap:13px; align-items:center; padding:15px; color:var(--ink); text-decoration:none; background:rgba(255,253,248,.7); border:1px solid var(--line); border-radius:14px; transition:.18s ease; }
-.transcript-choice,.transcript-upload { --accent:#4b587e; --soft:#e3e5ef; }
-.powerpoint-choice,.powerpoint-upload { --accent:#9a573c; --soft:#f1dfd7; }
-.document-choice,.document-upload { --accent:#315d46; --soft:#dce9dc; }
+.research-ideas-choice,.research-ideas-upload { --accent:#4b587e; --soft:#e3e5ef; }
+.talks-slides-choice,.talks-slides-upload { --accent:#9a573c; --soft:#f1dfd7; }
+.papers-proposals-choice,.papers-proposals-upload { --accent:#315d46; --soft:#dce9dc; }
 .type-choice:hover { transform:translateY(-2px); border-color:var(--accent); background:var(--paper); }
 .type-choice.selected { border-color:var(--accent); box-shadow:0 0 0 3px var(--soft); background:var(--paper); }
 .choice-icon { width:46px; height:46px; border-radius:13px; display:grid; place-items:center; color:var(--accent); background:var(--soft); font:italic 21px Georgia,serif; }

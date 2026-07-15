@@ -1,24 +1,24 @@
 # Promptly - Python local AI feedback website
 
-Promptly is a Python website for uploading a document, transcript, or PowerPoint and receiving feedback from a locally running language model. The interface uses HTML and CSS, and all application logic runs in Python with Flask. No client-side JavaScript is used.
+Promptly is a Python website for uploading work and receiving category-specific, mentor-style feedback from an OpenAI model. The interface uses HTML and CSS, and all application logic runs in Python with Flask. No client-side JavaScript is used.
 
 ## Supported files
 
-- Documents: `.pdf`, `.docx`, and `.txt`
-- Transcripts: `.txt`, `.srt`, `.vtt`, and `.docx`
-- PowerPoint: `.pptx`
+- Papers and proposals: `.pdf`, `.docx`, and `.txt`
+- Research ideas: `.pdf`, `.docx`, and `.txt`
+- Talks and slides: `.pptx`, `.pdf`, `.docx`, `.txt`, `.srt`, and `.vtt`
 
 Uploads are read in memory and are not saved by the website. The maximum file size is 20 MB.
 
 ## Feedback mentors
 
-Users select a mentor before uploading their file. Each mentor identifier is passed to the local model so it can apply that mentor's specialty, thinking process, and feedback style.
+Users select a mentor before uploading their file. The application combines the selected mentor's contributor-maintained style prompt with category-specific review instructions and the extracted file content.
 
 Currently available:
 
 - **Dr. Nanshu Lu** (`dr-nanshu-lu`)
 
-Additional mentors can be added to the `MENTORS` configuration in `app.py` when their model profiles become available.
+The current general prompt is stored in `mentor_prompts/dr-nanshu-lu.txt`. It is intentionally easy to replace when the prompt contributor supplies a validated version. Additional mentors can be added to the `MENTORS` configuration and `mentor_prompts` folder.
 
 ## Run it on Windows
 
@@ -89,26 +89,53 @@ Replace `C:\path\to\Hackathon_1` with the actual project location on that comput
 
 If PowerShell says that `py`, `git`, or `.\.venv\Scripts\python.exe` is not recognized, confirm that the required software is installed, reopen PowerShell, and verify that you are inside the `Hackathon_1` folder.
 
-The website works in demo mode without a model.
+The website works in demo mode without an OpenAI API key.
 
-## Connect the local model
+## Connect OpenAI
 
-Copy `.env.example` to `.env`, then set `MODEL_API_URL` to the local HTTP endpoint provided by the model team.
+This integration uses the OpenAI API. A ChatGPT subscription is separate from API usage, and API calls may cost money.
 
-Promptly extracts the uploaded file's text, identifies its content type, includes the optional feedback focus, and sends the complete request as:
+1. Create an API key in your OpenAI API account.
+2. In the project folder, create your private `.env` file:
 
-```json
-{
-  "prompt": "Mentor and feedback instructions followed by the extracted content",
-  "mentor_id": "dr-nanshu-lu",
-  "mentor_name": "Dr. Nanshu Lu"
-}
+```powershell
+Copy-Item .env.example .env
 ```
 
-The model service can return its answer in `output`, `response`, or `text`:
+3. Open `.env` and add the key after `OPENAI_API_KEY=`. Do not put the key in GitHub, screenshots, chat messages, or shared documents.
+4. Keep the cost-conscious default model or change it as a team decision:
 
-```json
-{ "output": "The model feedback" }
+```text
+OPENAI_API_KEY=your-private-key-here
+OPENAI_MODEL=gpt-5-mini
 ```
 
-The model server and this website must both be running while you use the application.
+5. Restart the website after changing `.env`.
+
+The application extracts text from the upload in memory, then sends the extracted content—not the original file—to OpenAI. The request asks OpenAI not to store the response (`store=False`) and caps generated output at 2,000 tokens. Review your organization's OpenAI data and retention requirements before using confidential or unpublished work.
+
+## Mentor prompt contributor workflow
+
+The prompt contributor does not need to edit the Flask routes or file extraction code.
+
+1. Open `mentor_prompts/dr-nanshu-lu.txt`.
+2. Replace the temporary general profile with the validated mentor-style prompt.
+3. Keep the prompt focused on review priorities, tone, critical questions, response organization, and examples of desired feedback behavior.
+4. Do not include an API key or private research content in the prompt file.
+5. Run the tests, then submit the change on a separate branch and pull request.
+
+## How feedback is generated
+
+Promptly extracts the uploaded file's text, identifies the selected feedback category, includes the optional focus, and calls the OpenAI Responses API with:
+
+```python
+client.responses.create(
+    model="gpt-5-mini",
+    instructions="Base safety rules plus the selected mentor style prompt",
+    input="Category guidance, filename, requested focus, and extracted content",
+    max_output_tokens=2000,
+    store=False,
+)
+```
+
+The API key stays on the Python server and is never sent to the browser. The generated text is returned to the Mentor feedback panel.

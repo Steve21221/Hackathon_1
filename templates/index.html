@@ -11,20 +11,20 @@
   <main>
     <nav class="nav" aria-label="Main navigation">
       <a class="brand" href="{{ url_for('home') }}" aria-label="Promptly home"><span class="brand-mark">P</span><span>Promptly</span></a>
-      <span class="status"><i></i> Python &middot; local mode</span>
+      <span class="status"><i></i> Python &middot; OpenAI ready</span>
     </nav>
 
     <section class="hero">
       <div class="eyebrow"><span>&#10022;</span> Feedback, made useful</div>
-      <h1>Bring your work.<br><em>Get thoughtful feedback.</em></h1>
-      <p class="intro">Choose what you want reviewed. Promptly reads the file locally, sends its text to your team&rsquo;s model, and returns focused, actionable feedback.</p>
+      <h1><span>Bring your work.</span><em>Get thoughtful feedback.</em></h1>
+      <p class="intro">Choose what you want reviewed. Promptly extracts the text, applies your selected mentor&rsquo;s style prompt, and uses OpenAI to return focused, actionable feedback.</p>
     </section>
 
     {% if error %}<div class="notice error" role="alert"><strong>We need one change:</strong> {{ error }}</div>{% endif %}
 
     <section class="upload-section" id="upload" aria-labelledby="upload-title">
       <div class="section-heading">
-        <div><h2 id="upload-title">Choose what you want reviewed</h2><p>Each option uses the same secure feedback pipeline, tailored to the type of content.</p></div>
+        <div><h2 id="upload-title">What kind of feedback do you need?</h2><p>Choose a category so your mentor can focus on what matters most.</p></div>
       </div>
 
       <div class="type-choices" aria-label="Content type choices">
@@ -62,20 +62,20 @@
         <article class="active-upload {{ selected_type }}-upload">
           <div class="active-upload-copy">
             <span class="file-badge">{{ selected.formats }}</span>
-            <h3>Upload your {{ selected.label|lower }}</h3>
+            <h3>Upload your {{ selected.upload_label }}</h3>
             <p>{{ selected.description }}</p>
           </div>
           <form method="post" action="{{ url_for('feedback') }}" enctype="multipart/form-data">
             <input type="hidden" name="content_type" value="{{ selected_type }}">
             <input type="hidden" name="mentor_id" value="{{ selected_mentor }}">
-            <label class="file-picker"><span>Choose a {{ selected.label|lower }}</span><input type="file" name="file" accept="{{ selected.accept }}" required></label>
+            <label class="file-picker"><span>Choose a {{ selected.upload_label }}</span><input type="file" name="file" accept="{{ selected.accept }}" required></label>
             <label class="focus-label">Optional feedback focus<input type="text" name="focus" maxlength="500" placeholder="{{ selected.focus }}"></label>
-            <button type="submit">Get {{ selected.label|lower }} feedback <span>&rarr;</span></button>
+            <button type="submit">Get mentor feedback <span>&rarr;</span></button>
           </form>
         </article>
-        <p class="privacy-note">Files are processed in memory on this computer and are not saved by the website. Maximum file size: 20 MB.</p>
+        <p class="privacy-note">Files are not saved by this website. When OpenAI is configured, extracted content is sent to OpenAI for feedback. Maximum file size: 20 MB.</p>
       {% else %}
-        <div class="choose-prompt"><span>&uarr;</span><p>Select one of the three types to continue.</p></div>
+        <div class="choose-prompt"><span>&uarr;</span><p>Select a feedback category to continue.</p></div>
       {% endif %}
     </section>
 
@@ -88,12 +88,12 @@
           <div class="feedback-meta"><span>Feedback from {{ mentors[selected_mentor].name }}</span><span>{{ filename }}</span></div>
           <p class="answer">{{ output }}</p>
         {% else %}
-          <div class="empty-state"><div class="spark">&#10022;</div><p>Ready when you are.</p><span>Choose one of the three upload options above.</span></div>
+          <div class="empty-state"><div class="spark">&#10022;</div><p>Ready when you are.</p><span>Choose a feedback category above.</span></div>
         {% endif %}
       </div>
     </section>
 
-    <footer><span>Promptly</span><p>Local Python feedback workspace. Uploaded files are not stored.</p></footer>
+    <footer><span>Promptly</span><p>Python mentor-feedback workspace powered by the OpenAI API.</p></footer>
   </main>
 </body>
 </html>
