@@ -1,6 +1,6 @@
 # Promptly - Python local AI feedback website
 
-Promptly is a local-first Python website for uploading work and receiving category-specific, mentor-style feedback. It can use the open-source Qwen 3.5 model through Ollama entirely on the user's computer, with OpenAI or Anthropic Claude available as optional paid API alternatives. The project does not train or fine-tune models; it only sends extracted text to a selected inference provider. The interface uses HTML and CSS, and all application logic runs in Python with Flask. No client-side JavaScript is used.
+Promptly is a local-first Python website for uploading work and receiving category-specific, mentor-style feedback. It can use the open-source Qwen 3.5 model through Ollama entirely on the user's computer, with OpenAI or Anthropic Claude available as optional paid API alternatives. The project does not train or fine-tune models; it only sends extracted text to a selected inference provider. Application logic runs in Python with Flask, while a small JavaScript enhancement displays selected PI-style reference files.
 
 ## Supported files
 
@@ -9,6 +9,26 @@ Promptly is a local-first Python website for uploading work and receiving catego
 - Talks and slides: `.pptx`, `.pdf`, `.docx`, `.txt`, `.srt`, and `.vtt`
 
 Feedback uploads are read in memory and are not saved by the website. The maximum file size is 20 MB.
+
+## Build a PI-style prompt library
+
+The separate `/prompt-library` page integrates the `xianke-pi-style-workspace` extraction workflow while keeping the main feedback page focused. Use the boxed navigation link to switch between the feedback workspace and prompt library. Upload prior PI comments or examples in any of these groups:
+
+- Research ideas and meeting minutes
+- Talks, presentations, and slides
+- Papers and proposals
+
+Reference uploads support `.pdf`, `.docx`, `.pptx`, `.txt`, and `.md`. Create a named prompt library for a mentor or select an existing one; Promptly keeps that library's reference files together, extracts useful review units, identifies recurring concerns and review patterns, and builds one reusable prompt per uploaded category. Libraries can be refreshed with more files or deleted from the page.
+
+When `MODEL_PROVIDER=ollama`, `MODEL_PROVIDER=openai`, or `MODEL_PROVIDER=claude`, the configured model performs a two-step process: it first distills reusable advisor moves without copying project-specific details, then writes a general-purpose prompt. Demo mode uses the deterministic local builder so the workflow remains usable without a model connection.
+
+Each run saves TXT files locally under:
+
+```text
+outputs/pi_style_prompts_<run-id>/
+```
+
+The stable prompt files for each library are updated under `mentor_files/<library-slug>/`, while the run folder provides individual downloads and a combined `all_pi_style_prompts.txt` file. Reference libraries and generated outputs are ignored by Git.
 
 ## Feedback mentors
 
@@ -19,16 +39,6 @@ Currently available:
 - **Dr. Nanshu Lu** (`dr-nanshu-lu`)
 
 The current general prompt is stored in `Mentor_Data/dr-nanshu-lu.txt`. It is intentionally easy to replace when the prompt contributor supplies a validated version. Each mentor listed on the website has a corresponding prompt file in `Mentor_Data`; additional mentors can be added to the `MENTORS` configuration and that folder.
-
-### Mentor source-document intake
-
-The separate `/mentor-data` page lets an authorized user select a mentor and upload up to 10 source documents in one 20 MB batch. Unlike feedback uploads, these files are intentionally saved locally under:
-
-```text
-Mentor_Data/Source_Documents/<mentor-id>/pending/<batch-id>/
-```
-
-Each batch contains the source files and a `manifest.json` for the future prompt-extraction program. The manifest records the selected mentor, optional contributor notes, filenames, sizes, SHA-256 hashes, and a `pending` status. The entire `Source_Documents` folder is ignored by Git so private or unpublished materials are not pushed to GitHub accidentally.
 
 ## Run it on Windows
 
