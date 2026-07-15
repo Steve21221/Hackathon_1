@@ -8,8 +8,9 @@ main { min-height:100vh; overflow:hidden; }
 .brand { color:var(--ink); display:flex; align-items:center; gap:11px; text-decoration:none; font-size:19px; font-weight:700; letter-spacing:-.03em; }
 .brand-mark { display:grid; place-items:center; width:33px; height:33px; border-radius:10px; background:var(--ink); color:#fff; font-family:Georgia,serif; font-style:italic; }
 .nav-actions { display:flex; align-items:center; gap:20px; }
-.nav-link { color:var(--green); text-decoration:none; font-size:12px; font-weight:700; }
-.nav-link:hover { text-decoration:underline; }
+.nav-link { display:inline-flex; align-items:center; min-height:36px; padding:8px 12px; color:var(--green); background:rgba(255,253,248,.72); border:1px solid rgba(36,84,59,.42); border-radius:9px; text-decoration:none; font-size:12px; font-weight:700; transition:.18s ease; }
+.nav-link:hover { color:#fff; background:var(--green); border-color:var(--green); }
+.nav-link:focus-visible { outline:3px solid var(--sage); outline-offset:2px; }
 .status { display:flex; align-items:center; gap:8px; font-size:12px; letter-spacing:.05em; color:#536158; text-transform:uppercase; }
 .status i { width:8px; height:8px; border-radius:50%; background:#4a9a69; box-shadow:0 0 0 4px rgba(74,154,105,.14); }
 .hero { text-align:center; max-width:900px; margin:82px auto 58px; padding:0 24px; }

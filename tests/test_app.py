@@ -34,6 +34,7 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertIn(b"Research ideas", response.data)
         self.assertIn(b"Talks &amp; slides", response.data)
         self.assertIn(b"Dr. Nanshu Lu", response.data)
+        self.assertIn(b"Build mentor library", response.data)
         self.assertNotIn(b'name="file"', response.data)
 
     def test_clicking_type_shows_one_upload_form(self):
