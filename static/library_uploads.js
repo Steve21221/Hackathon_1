@@ -344,7 +344,11 @@
     function toggleDeleteMentorButton(form) {
       if (!form) return;
       var button = form.querySelector('[data-delete-mentor-button]');
-      if (button) button.hidden = !selectedMentorValue(form);
+      if (button) {
+        var selectedMentor = selectedMentorValue(form);
+        button.hidden = !selectedMentor;
+        button.value = selectedMentor;
+      }
     }
 
     function clearStoredFileDisplays(form) {
