@@ -65,6 +65,28 @@ function Find-Ollama {
     return $null
 }
 
+function Test-OllamaServer {
+    try {
+        Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/version" -TimeoutSec 2 | Out-Null
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function Wait-ForOllama([int]$TimeoutSeconds = 600) {
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        $ollamaCommand = Find-Ollama
+        if ($ollamaCommand -and (Test-OllamaServer)) {
+            return $ollamaCommand
+        }
+        Start-Sleep -Seconds 2
+    } while ([DateTime]::UtcNow -lt $deadline)
+    return $null
+}
+
 Write-Host "Promptly local setup" -ForegroundColor Green
 Write-Host "This installs the website and downloads a local reasoning model."
 Write-Host "No OpenAI API key or per-token payment is required."
@@ -139,6 +161,15 @@ try {
         $ollama = Find-Ollama
         if (-not $ollama) {
             throw "Ollama was not found after installation. Restart Windows, then run this setup again."
+        }
+    }
+
+    if (-not (Test-OllamaServer)) {
+        Write-Step "Starting Ollama's local server"
+        Start-Process -FilePath $ollama -ArgumentList "serve" -WindowStyle Hidden | Out-Null
+        $ollama = Wait-ForOllama -TimeoutSeconds 60
+        if (-not $ollama) {
+            throw "Ollama is installed but its local server could not start. Restart Windows, open Ollama, then run this setup again."
         }
     }
 
