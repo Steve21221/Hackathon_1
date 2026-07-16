@@ -617,16 +617,23 @@ def extract_powerpoint(file_bytes: bytes) -> str:
 
 
 def extract_text(file_bytes: bytes, extension: str) -> str:
-    if extension in {".txt", ".srt", ".vtt"}:
-        text = extract_plain_text(file_bytes)
-    elif extension == ".docx":
-        text = extract_docx(file_bytes)
-    elif extension == ".pdf":
-        text = extract_pdf(file_bytes)
-    elif extension == ".pptx":
-        text = extract_powerpoint(file_bytes)
-    else:
-        raise ValueError("Unsupported file type.")
+    try:
+        if extension in {".txt", ".srt", ".vtt"}:
+            text = extract_plain_text(file_bytes)
+        elif extension == ".docx":
+            text = extract_docx(file_bytes)
+        elif extension == ".pdf":
+            text = extract_pdf(file_bytes)
+        elif extension == ".pptx":
+            text = extract_powerpoint(file_bytes)
+        else:
+            raise ValueError("Unsupported file type.")
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise ValueError(
+            "The uploaded file could not be read. It may be damaged or may not match its file extension."
+        ) from exc
 
     text = text.strip()
     if not text:
@@ -1463,7 +1470,8 @@ def feedback():
             selected_prompt_mentor=library_slug,
         )
     except (OSError, ValueError, OpenAIError, AnthropicError, requests.RequestException) as exc:
-        app.logger.exception("Feedback generation failed: %s", exc)
+        if not isinstance(exc, ValueError):
+            app.logger.exception("Feedback generation failed: %s", exc)
         provider = current_provider()
         if isinstance(exc, ValueError):
             message = str(exc)
@@ -1527,4 +1535,4 @@ def api_generate():
 
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    app.run(host="127.0.0.1", port=5000, debug=False, use_reloader=False)

@@ -224,6 +224,12 @@ The prompt contributor does not need to edit the Flask routes or file extraction
 4. Do not include an API key, source quotations, or private research content in any prompt file.
 5. Run the tests, then submit the change on a separate branch and pull request.
 
+Run the complete test suite from the project folder with:
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+
 ## How feedback is generated
 
 Promptly extracts the uploaded file's text, identifies the selected feedback category, includes the optional focus, and combines it with the mentor prompt. It then sends that request to the provider selected in `.env`:

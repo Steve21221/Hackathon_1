@@ -1,5 +1,7 @@
 ﻿import json
 
+import unittest
+
 from raw_materials.chunker import chunk_text
 from raw_materials.jsonl_builder import (
     build_records,
@@ -206,3 +208,13 @@ def test_prompt_builder_writes_polished_prompt_without_filler_or_fragments():
     assert "controls" in generated
     assert "falsifiable" in generated
     assert "Use the professor's style" in generated
+
+
+def load_tests(_loader, _tests, _pattern):
+    """Make these function tests discoverable without requiring pytest."""
+    functions = [
+        value
+        for name, value in sorted(globals().items())
+        if name.startswith("test_") and callable(value)
+    ]
+    return unittest.TestSuite(unittest.FunctionTestCase(function) for function in functions)
