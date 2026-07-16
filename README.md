@@ -27,7 +27,7 @@ When `MODEL_PROVIDER=ollama`, `MODEL_PROVIDER=openai`, or `MODEL_PROVIDER=claude
 Each run saves TXT files locally under:
 
 ```text
-outputs/pi_style_prompts_<run-id>/
+outputs/pi_style_prompts_<mentor-slug>_<run-id>/
 ```
 
 The stable prompt files for each library are updated under `mentor_files/<library-slug>/`, while the run folder provides individual downloads and a combined `all_pi_style_prompts.txt` file. Reference libraries and generated outputs are ignored by Git.
@@ -43,6 +43,8 @@ Currently available:
 Dr. Lu's version-controlled starting profile contains three category-specific files under `Mentor_Data/dr-nanshu-lu/`: `meeting_research_pi.txt`, `paper_proposal_pi.txt`, and `slides_talk_pi.txt`. Promptly automatically loads the file matching the selected feedback category. Additional built-in mentors can be added with the same three-file structure and a corresponding `MENTORS` entry.
 
 Built-in mentors also appear in **Modify a review style**. When local reference files are uploaded for a built-in mentor, Promptly saves the learned prompt under `mentor_files/<mentor-slug>/` and uses it in the feedback workspace for that matching category. Categories without a local update continue using the version-controlled `Mentor_Data` starting prompt. Locally created mentor libraries use the same registry and automatically appear in the feedback workspace after a prompt is generated.
+
+User-created mentors can be deleted from **Modify a review style** after selecting their card. Promptly asks for confirmation, then removes that mentor's stored reference files, generated prompts, metadata, and associated downloadable run copies. Built-in mentors are protected and cannot be deleted.
 
 ## Contributors
 

@@ -52,10 +52,14 @@
               formnovalidate
               data-delete-mentor-button
               {% if not selected_prompt_mentor or not selected_prompt_mentor_profile.deletable %}hidden{% endif %}
-            >Delete library</button>
+            >Delete mentor</button>
             <p class="mentor-library-note" data-prompt-library-note>
               {% if selected_prompt_mentor_profile %}
-                Active library: <strong data-active-library-name>{{ selected_prompt_mentor_profile.name }}</strong>. Uploads accumulate here and prompt TXT files update each time you generate.
+                {% if selected_prompt_mentor_profile.deletable %}
+                  Active library: <strong data-active-library-name>{{ selected_prompt_mentor_profile.name }}</strong>. Uploads accumulate here and prompt TXT files update each time you generate.
+                {% else %}
+                  <strong data-active-library-name>{{ selected_prompt_mentor_profile.name }}</strong> is built in and cannot be deleted. Local uploads update its matching review categories.
+                {% endif %}
               {% else %}
                 Create a named library or select an existing one. Its reference files and generated prompts stay together on this computer.
               {% endif %}
@@ -104,7 +108,7 @@
           <span data-working-message>Working</span>
         </p>
       </form>
-      <form id="delete-mentor-form" method="post" action="{{ url_for('delete_mentor') }}"></form>
+      <form id="delete-mentor-form" method="post" action="{{ url_for('delete_mentor') }}" data-delete-mentor-form></form>
     </section>
 
     <section class="feedback-section prompt-output-section" aria-labelledby="prompt-output-title" data-prompt-output {% if not prompt_cards %}hidden{% endif %}>

@@ -57,6 +57,7 @@ MAX_LOCAL_EXTRACTED_TEXT = 500_000
 OLLAMA_REVIEW_CHUNK_CHARS = 50_000
 MAX_PROMPT_PREVIEW_SEGMENTS = 3
 DELETE_REFERENCE_FILE_ERROR = "Please select an existing library file to delete."
+MENTOR_RUN_METADATA_FILENAME = ".mentor-run.json"
 PROJECT_ROOT = Path(__file__).resolve().parent
 SETTINGS_PATH = PROJECT_ROOT / "user_settings.json"
 app.config["SETTINGS_PATH"] = SETTINGS_PATH
@@ -1125,17 +1126,54 @@ def save_mentor_prompt_outputs(slug: str, artifacts: dict[str, PromptArtifact]) 
     return directory
 
 
-def delete_prompt_mentor(slug: str) -> None:
+def delete_prompt_runs_for_mentor(slug: str) -> int:
+    """Delete generated download-copy folders that belong to a mentor."""
+    safe_slug = mentor_slug(slug)
+    output_root = get_output_dir().resolve()
+    if not output_root.exists():
+        return 0
+
+    deleted = 0
+    run_prefix = f"pi_style_prompts_{safe_slug}_"
+    for candidate in output_root.iterdir():
+        if not candidate.is_dir():
+            continue
+        belongs_to_mentor = candidate.name.startswith(run_prefix)
+        metadata_path = candidate / MENTOR_RUN_METADATA_FILENAME
+        if metadata_path.is_file():
+            try:
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                metadata = {}
+            metadata_slug = metadata.get("mentor_slug")
+            if metadata_slug:
+                belongs_to_mentor = metadata_slug == safe_slug
+        if not belongs_to_mentor:
+            continue
+
+        resolved = candidate.resolve()
+        if output_root not in resolved.parents:
+            continue
+        shutil.rmtree(resolved)
+        deleted += 1
+    return deleted
+
+
+def delete_prompt_mentor(slug: str) -> int:
     safe_slug = mentor_slug(slug)
     if safe_slug != slug.strip().lower():
         raise ValueError("Please select an existing mentor to delete.")
+    if safe_slug in MENTORS:
+        raise ValueError("Built-in mentors cannot be deleted.")
     directory = mentor_dir(safe_slug).resolve()
     root = get_mentor_library_dir().resolve()
     if root not in directory.parents:
         raise ValueError("Please select an existing mentor to delete.")
     if not directory.exists() or read_prompt_mentor(safe_slug) is None:
         raise ValueError("Please select an existing mentor to delete.")
+    deleted_runs = delete_prompt_runs_for_mentor(safe_slug)
     shutil.rmtree(directory)
+    return deleted_runs
 
 
 def delete_stored_reference_file(slug: str, mode: str, filename: str) -> None:
@@ -1293,14 +1331,32 @@ def build_grouped_reference_chunks() -> dict[str, list[dict]]:
     return grouped_chunks
 
 
-def save_prompt_outputs(artifacts: dict[str, PromptArtifact]) -> str:
-    run_id = f"pi_style_prompts_{uuid4().hex[:10]}"
+def save_prompt_outputs(
+    artifacts: dict[str, PromptArtifact],
+    *,
+    mentor_id: str,
+    mentor_name: str,
+) -> str:
+    safe_slug = mentor_slug(mentor_id)
+    if safe_slug != mentor_id.strip().lower():
+        raise ValueError("The selected mentor library is invalid.")
+    run_id = f"pi_style_prompts_{safe_slug}_{uuid4().hex[:10]}"
     run_directory = get_output_dir() / run_id
     run_directory.mkdir(parents=True, exist_ok=False)
     for artifact in artifacts.values():
         (run_directory / artifact.filename).write_text(artifact.content, encoding="utf-8")
     (run_directory / "all_pi_style_prompts.txt").write_text(
         build_combined_prompt_text(artifacts),
+        encoding="utf-8",
+    )
+    (run_directory / MENTOR_RUN_METADATA_FILENAME).write_text(
+        json.dumps(
+            {
+                "mentor_slug": safe_slug,
+                "mentor_name": mentor_name,
+            },
+            indent=2,
+        ),
         encoding="utf-8",
     )
     return run_id
@@ -1481,7 +1537,11 @@ def generate_prompts():
         )
 
     try:
-        run_id = save_prompt_outputs(artifacts)
+        run_id = save_prompt_outputs(
+            artifacts,
+            mentor_id=prompt_mentor["slug"],
+            mentor_name=prompt_mentor["name"],
+        )
         mentor_output_directory = save_mentor_prompt_outputs(
             prompt_mentor["slug"],
             artifacts,
@@ -1566,7 +1626,12 @@ def delete_mentor():
         return render_prompt_library(error="Please select a mentor to delete."), 400
     try:
         delete_prompt_mentor(selected_slug)
-    except ValueError as exc:
+    except (OSError, ValueError) as exc:
+        if isinstance(exc, OSError):
+            app.logger.exception("Could not delete mentor library")
+            return render_prompt_library(
+                error="The mentor could not be completely deleted from this computer."
+            ), 500
         return render_prompt_library(error=str(exc)), 400
     return redirect(url_for("prompt_library"))
 
@@ -1645,6 +1710,8 @@ def library_state(slug: str):
         {
             "slug": safe_slug,
             "name": profile["name"],
+            "source": profile.get("source", "library"),
+            "deletable": bool(profile.get("deletable", True)),
             "stored_prompt_files": stored_files_for_mentor(safe_slug),
         }
     )

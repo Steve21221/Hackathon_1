@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import unittest
@@ -136,6 +137,10 @@ class PromptlyTestCase(unittest.TestCase):
         run_directory = Path(app.config["OUTPUT_DIR"]) / run_id
         self.assertTrue((run_directory / "meeting_research_pi_prompt.txt").is_file())
         self.assertTrue((run_directory / "all_pi_style_prompts.txt").is_file())
+        run_metadata = json.loads(
+            (run_directory / ".mentor-run.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(run_metadata["mentor_slug"], "pi-style-library")
 
         download = self.client.get(f"/download/{run_id}/meeting_research_pi_prompt")
         self.assertEqual(download.status_code, 200)
@@ -212,6 +217,7 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'id="delete-mentor-form"', response.data)
         self.assertIn(b'form="delete-mentor-form"', response.data)
+        self.assertIn(b'data-delete-mentor-form', response.data)
         self.assertIn(b'name="selected_prompt_mentor"', response.data)
         self.assertNotIn(b'formaction="/delete-mentor"', response.data)
 
@@ -377,7 +383,7 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertIn(b"first.txt", response.data)
 
     def test_prompt_library_selection_and_delete_flow(self):
-        self.client.post(
+        created = self.client.post(
             "/generate-prompts",
             data={
                 "prompt_mentor_name": "Delete Mentor",
@@ -385,12 +391,22 @@ class PromptlyTestCase(unittest.TestCase):
             },
             content_type="multipart/form-data",
         )
+        self.assertEqual(created.status_code, 200)
+        run_id = created.headers["X-Prompt-Run-Id"]
+        run_directory = Path(app.config["OUTPUT_DIR"]) / run_id
         library = Path(app.config["MENTOR_LIBRARY_DIR"]) / "delete-mentor"
+        unrelated_run = Path(app.config["OUTPUT_DIR"]) / "pi_style_prompts_other-mentor_keep"
+        unrelated_run.mkdir()
+        (unrelated_run / ".mentor-run.json").write_text(
+            json.dumps({"mentor_slug": "other-mentor"}),
+            encoding="utf-8",
+        )
+        self.assertTrue(run_directory.is_dir())
 
         selected = self.client.get("/prompt-library?prompt_mentor=delete-mentor")
         self.assertEqual(selected.status_code, 200)
         self.assertIn(b"Delete Mentor", selected.data)
-        self.assertIn(b"Delete library", selected.data)
+        self.assertIn(b"Delete mentor", selected.data)
         self.assertIn(b"review.txt", selected.data)
 
         deleted = self.client.post(
@@ -400,7 +416,19 @@ class PromptlyTestCase(unittest.TestCase):
         )
         self.assertEqual(deleted.status_code, 200)
         self.assertFalse(library.exists())
+        self.assertFalse(run_directory.exists())
+        self.assertTrue(unrelated_run.is_dir())
         self.assertNotIn(b"review.txt", deleted.data)
+
+    def test_builtin_mentor_cannot_be_deleted(self):
+        response = self.client.post(
+            "/delete-mentor",
+            data={"selected_prompt_mentor": "dr-nanshu-lu"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(b"Built-in mentors cannot be deleted", response.data)
+        self.assertTrue((Path("Mentor_Data") / "dr-nanshu-lu").is_dir())
 
     def test_delete_prompt_library_rejects_unsafe_selection(self):
         response = self.client.post(
