@@ -1,13 +1,16 @@
 ﻿(function () {
-  function formatFileList(files) {
-    return Array.from(files).map(function (file) { return file.name; });
+  function removeSelectedReferenceFile(input, removeIndex) {
+    var files = (input._promptlyPendingFiles || []).slice();
+    files.splice(removeIndex, 1);
+    input._promptlyPendingFiles = files;
+    updateCard(input);
   }
 
   function updateCard(input) {
     var card = input.closest('.reference-choice');
     if (!card) return;
 
-    var files = formatFileList(input.files || []);
+    var files = input._promptlyPendingFiles || Array.from(input.files || []);
     var summary = card.querySelector('[data-file-summary]');
     var list = card.querySelector('[data-file-list]');
 
@@ -17,12 +20,44 @@
     }
     if (list) {
       list.textContent = '';
-      files.forEach(function (name) {
+      files.forEach(function (file, index) {
         var item = document.createElement('span');
-        item.className = 'selected-file-name';
-        item.textContent = name;
+        item.className = 'selected-file-item';
+
+        var name = document.createElement('span');
+        name.className = 'selected-file-name';
+        name.textContent = file.name;
+
+        var remove = document.createElement('button');
+        remove.className = 'selected-file-delete';
+        remove.type = 'button';
+        remove.textContent = '\u00d7';
+        remove.setAttribute('aria-label', 'Remove ' + file.name);
+        remove.addEventListener('click', function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          removeSelectedReferenceFile(input, index);
+        });
+
+        item.appendChild(name);
+        item.appendChild(remove);
         list.appendChild(item);
       });
+    }
+  }
+
+  function updateFeedbackFile(input) {
+    var form = input.closest('form');
+    if (!form) return;
+    var selection = form.querySelector('[data-feedback-file-selection]');
+    var name = form.querySelector('[data-feedback-file-name]');
+    var remove = form.querySelector('[data-remove-feedback-file]');
+    var file = input.files && input.files.length ? input.files[0] : null;
+
+    if (selection) selection.hidden = !file;
+    if (name) name.textContent = file ? file.name : '';
+    if (remove) {
+      remove.setAttribute('aria-label', file ? 'Remove ' + file.name : 'Remove selected file');
     }
   }
 
@@ -213,8 +248,26 @@
 
   document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('.reference-choice input[type="file"][multiple]').forEach(function (input) {
-      input.addEventListener('change', function () { updateCard(input); });
+      input._promptlyPendingFiles = Array.from(input.files || []);
+      input.addEventListener('change', function () {
+        input._promptlyPendingFiles = Array.from(input.files || []);
+        updateCard(input);
+      });
       updateCard(input);
+    });
+
+    document.querySelectorAll('[data-feedback-file-input]').forEach(function (input) {
+      var form = input.closest('form');
+      var remove = form && form.querySelector('[data-remove-feedback-file]');
+      input.addEventListener('change', function () { updateFeedbackFile(input); });
+      if (remove) {
+        remove.addEventListener('click', function () {
+          input.value = '';
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+          input.focus();
+        });
+      }
+      updateFeedbackFile(input);
     });
 
     function selectedMentorValue(form) {
@@ -657,6 +710,16 @@
       });
     }
 
+    var restoreDefaultsForm = document.querySelector('[data-restore-defaults-form]');
+    if (restoreDefaultsForm) {
+      restoreDefaultsForm.addEventListener('submit', function (event) {
+        var confirmed = window.confirm(
+          'Restore the bundled mentor defaults? This permanently removes local mentor libraries, uploaded references, generated prompt overrides, and run copies. Model settings, API keys, Ollama, and downloaded models stay unchanged.'
+        );
+        if (!confirmed) event.preventDefault();
+      });
+    }
+
     document.querySelectorAll('[data-type-choice]').forEach(function (choice) {
       choice.addEventListener('click', function () {
         selectFeedbackType(choice.getAttribute('data-type-key'));
@@ -698,6 +761,13 @@
         }
 
         var body = new FormData(form);
+        form.querySelectorAll('input[type="file"][multiple]').forEach(function (input) {
+          if (!input.name || !Array.isArray(input._promptlyPendingFiles)) return;
+          body.delete(input.name);
+          input._promptlyPendingFiles.forEach(function (file) {
+            body.append(input.name, file, file.name);
+          });
+        });
         fetch(form.getAttribute('action'), {
           method: 'POST',
           body: body,

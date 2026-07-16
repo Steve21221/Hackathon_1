@@ -1204,6 +1204,34 @@ def get_mentor_library_dir() -> Path:
     return Path(app.config["MENTOR_LIBRARY_DIR"])
 
 
+def clear_local_state_directory(directory: Path) -> int:
+    """Remove a local state directory's contents without deleting its root."""
+    root = directory.resolve()
+    protected_roots = {
+        PROJECT_ROOT.resolve(),
+        MENTOR_DATA_DIRECTORY.resolve(),
+        Path.home().resolve(),
+        Path(root.anchor).resolve(),
+    }
+    if root in protected_roots:
+        raise ValueError("Refusing to reset an unsafe local state directory.")
+
+    root.mkdir(parents=True, exist_ok=True)
+    deleted = 0
+    for child in root.iterdir():
+        if child.is_symlink() or child.is_file():
+            child.unlink()
+        elif child.is_dir():
+            resolved_child = child.resolve()
+            if root not in resolved_child.parents:
+                raise ValueError("Refusing to reset an unsafe local state directory.")
+            shutil.rmtree(resolved_child)
+        else:
+            child.unlink()
+        deleted += 1
+    return deleted
+
+
 def mentor_slug(name: str) -> str:
     words = re.findall(r"[A-Za-z0-9]+", name.lower())
     return "-".join(words[:8]) if words else "mentor"
@@ -1928,6 +1956,20 @@ def delete_reference_file():
     except (ValueError, OSError):
         return render_prompt_library(error=DELETE_REFERENCE_FILE_ERROR), 400
     return redirect(url_for("prompt_library", prompt_mentor=mentor_slug(selected_slug)))
+
+
+@app.post("/restore-mentor-defaults")
+def restore_mentor_defaults():
+    """Restore bundled mentor prompts and visibility without touching model settings."""
+    try:
+        clear_local_state_directory(get_mentor_library_dir())
+        clear_local_state_directory(get_output_dir())
+    except (OSError, ValueError):
+        app.logger.exception("Could not restore the bundled mentor defaults")
+        return render_prompt_library(
+            error="The mentor defaults could not be completely restored on this computer."
+        ), 500
+    return redirect(url_for("prompt_library", restored="1"))
 
 
 @app.get("/download/<run_id>/<kind>")

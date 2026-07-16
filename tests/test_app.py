@@ -52,6 +52,20 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertIn(b"Talks &amp; slides", response.data)
         self.assertIn(b'data-choose-prompt', response.data)
         self.assertIn(b'data-upload-panel="research-ideas"', response.data)
+        self.assertEqual(response.data.count(b"data-feedback-file-input"), 3)
+        self.assertEqual(response.data.count(b"data-feedback-file-selection"), 3)
+        self.assertEqual(response.data.count(b"data-remove-feedback-file"), 3)
+
+    def test_upload_script_supports_removing_pending_files(self):
+        script = (Path("static") / "library_uploads.js").read_text(encoding="utf-8")
+
+        self.assertIn("removeSelectedReferenceFile", script)
+        self.assertIn("_promptlyPendingFiles", script)
+        self.assertIn("body.delete(input.name)", script)
+        self.assertIn("data-remove-feedback-file", script)
+        self.assertIn("input.value = '';", script)
+        self.assertIn("data-restore-defaults-form", script)
+        self.assertIn("downloaded models stay unchanged", script)
 
     def test_review_style_workspace_is_separate_from_home_page(self):
         response = self.client.get("/")
@@ -231,6 +245,10 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertIn(b'data-delete-mentor-form', response.data)
         self.assertIn(b'name="selected_prompt_mentor"', response.data)
         self.assertNotIn(b'formaction="/delete-mentor"', response.data)
+        self.assertIn(b'action="/restore-mentor-defaults"', response.data)
+        self.assertIn(b'data-restore-defaults-form', response.data)
+        self.assertIn(b"Restore mentor defaults", response.data)
+        self.assertIn(b"downloaded models stay unchanged", response.data)
 
     def test_builtin_mentor_library_is_shared_with_feedback_workspace(self):
         selected = self.client.get("/prompt-library?prompt_mentor=dr-nanshu-lu")
@@ -482,6 +500,55 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertIn(b"Dr. Nanshu Lu", restored.data)
         self.assertFalse(removed_path.exists())
         self.assertIn(b"Dr. Nanshu Lu", self.client.get("/").data)
+
+    def test_restore_mentor_defaults_clears_only_local_mentor_state(self):
+        mentor_root = Path(app.config["MENTOR_LIBRARY_DIR"])
+        output_root = Path(app.config["OUTPUT_DIR"])
+        settings_path = Path(app.config["SETTINGS_PATH"])
+        local_library = mentor_root / "custom-mentor"
+        local_override = mentor_root / "dr-nanshu-lu" / "paper_proposal_pi"
+        local_library.mkdir(parents=True)
+        local_override.mkdir(parents=True)
+        output_run = output_root / "pi_style_prompts_custom-mentor_test"
+        output_run.mkdir(parents=True)
+        (local_library / "mentor.json").write_text(
+            json.dumps({"slug": "custom-mentor", "name": "Custom Mentor"}),
+            encoding="utf-8",
+        )
+        (local_override / "prompt.txt").write_text("Local override", encoding="utf-8")
+        (mentor_root / ".removed-mentors.json").write_text(
+            json.dumps(["dr-nanshu-lu"]),
+            encoding="utf-8",
+        )
+        (output_run / "all_pi_style_prompts.txt").write_text(
+            "Local run copy",
+            encoding="utf-8",
+        )
+        saved_settings = json.dumps(
+            {
+                "MODEL_PROVIDER": "ollama",
+                "OLLAMA_MODEL": "qwen3.5:4b",
+                "OPENAI_API_KEY": "preserve-me",
+            },
+            indent=2,
+        )
+        settings_path.write_text(saved_settings, encoding="utf-8")
+
+        response = self.client.post(
+            "/restore-mentor-defaults",
+            follow_redirects=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(list(mentor_root.iterdir()), [])
+        self.assertEqual(list(output_root.iterdir()), [])
+        self.assertEqual(settings_path.read_text(encoding="utf-8"), saved_settings)
+        self.assertIn(b"Mentor defaults restored", response.data)
+        self.assertIn(b"Dr. Nanshu Lu", response.data)
+        self.assertNotIn(b"Custom Mentor", response.data)
+        self.assertTrue(
+            (Path("Mentor_Data") / "dr-nanshu-lu" / "paper_proposal_pi.txt").is_file()
+        )
 
     def test_delete_prompt_library_rejects_unsafe_selection(self):
         response = self.client.post(

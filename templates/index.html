@@ -104,7 +104,11 @@
               <input type="hidden" name="content_type" value="{{ type_key }}">
               <input type="hidden" name="mentor_id" value="{{ selected_feedback_mentor }}" data-feedback-mentor-input>
               {% if selected_prompt_mentor %}<input type="hidden" name="selected_prompt_mentor" value="{{ selected_prompt_mentor }}" data-feedback-prompt-mentor-input>{% else %}<input type="hidden" name="selected_prompt_mentor" value="" data-feedback-prompt-mentor-input>{% endif %}
-              <label class="file-picker"><span>Choose a {{ type_info.upload_label }}</span><input type="file" name="file" accept="{{ type_info.accept }}" required></label>
+              <label class="file-picker"><span>Choose a {{ type_info.upload_label }}</span><input type="file" name="file" accept="{{ type_info.accept }}" required data-feedback-file-input></label>
+              <div class="feedback-file-selection" data-feedback-file-selection hidden aria-live="polite">
+                <span class="selected-file-name" data-feedback-file-name></span>
+                <button class="feedback-file-remove" type="button" data-remove-feedback-file>Remove file</button>
+              </div>
               <label class="focus-label">Optional feedback focus<input type="text" name="focus" maxlength="500" placeholder="{{ type_info.focus }}"></label>
               <button type="submit" data-working-button data-default-label="Get mentor feedback">Get mentor feedback <span data-working-arrow>&rarr;</span></button>
             </form>
