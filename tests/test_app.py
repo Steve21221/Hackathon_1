@@ -77,6 +77,17 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertIn(b"Generate reusable prompts", library_response.data)
         self.assertIn(b"Feedback workspace", library_response.data)
         self.assertLess(
+            library_response.data.index(b"Papers / proposals"),
+            library_response.data.index(b"Research ideas / meeting minutes"),
+        )
+        self.assertLess(
+            library_response.data.index(b"Research ideas / meeting minutes"),
+            library_response.data.index(b"Talks / presentations / slides"),
+        )
+        self.assertIn(b"reference-choice-paper-proposal-pi", library_response.data)
+        self.assertIn(b"reference-choice-meeting-research-pi", library_response.data)
+        self.assertIn(b"reference-choice-slides-talk-pi", library_response.data)
+        self.assertLess(
             library_response.data.index(b"Feedback workspace"),
             library_response.data.index(b"Model settings"),
         )
@@ -724,6 +735,30 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertIn("Unrecognized heading", rendered)
         self.assertIn("!", rendered)
 
+    def test_feedback_markdown_renders_inline_and_display_latex_as_readable_text(self):
+        feedback = r"""## Technical corrections needed
+
+The normalized error is \[
+E = \frac{\Delta L}{L_0} \times 100\%.
+\]
+
+Require \(x_i \leq \sqrt{\alpha^2 + \beta^2}\), and report
+$$p_{max} \approx 3 \times 10^{-4}.$$
+"""
+
+        rendered = render_markdown_html(feedback)
+
+        self.assertIn("E = (Δ L)/(L₀) × 100%.", rendered)
+        self.assertIn("xᵢ ≤ √(α² + β²)", rendered)
+        self.assertIn("p_(max) ≈ 3 × 10⁻⁴", rendered)
+        for raw_latex in (r"\[", r"\]", "$$", r"\frac", r"\sqrt", r"\alpha"):
+            self.assertNotIn(raw_latex, rendered)
+
+    def test_feedback_markdown_does_not_treat_currency_as_math(self):
+        rendered = render_markdown_html("The first option costs $5 and the second costs $10.")
+
+        self.assertIn("$5 and the second costs $10", rendered)
+
     def test_mentor_style_prompts_are_available_for_all_three_modes(self):
         research_prompt = load_mentor_prompt("dr-nanshu-lu", "research-ideas")
         paper_prompt = load_mentor_prompt("dr-nanshu-lu", "papers-proposals")
@@ -756,11 +791,11 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertFalse(request["store"])
 
     @patch("app.requests.post")
-    def test_ollama_receives_thinking_prompt_locally(self, mock_post):
+    def test_ollama_uses_bounded_non_thinking_request_locally(self, mock_post):
         os.environ["MODEL_PROVIDER"] = "ollama"
         os.environ["OLLAMA_MODEL"] = "qwen3.5:9b"
         mock_post.return_value.json.return_value = {
-            "message": {"content": "Critical local feedback", "thinking": "hidden reasoning"}
+            "message": {"content": "Critical local feedback", "thinking": ""}
         }
 
         result = call_model(
@@ -773,38 +808,31 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertEqual(request.args[0], "http://127.0.0.1:11434/api/chat")
         payload = request.kwargs["json"]
         self.assertEqual(payload["model"], "qwen3.5:9b")
-        self.assertTrue(payload["think"])
+        self.assertFalse(payload["think"])
         self.assertFalse(payload["stream"])
-        self.assertEqual(payload["options"]["num_predict"], 6_144)
+        self.assertEqual(payload["keep_alive"], "30m")
+        self.assertEqual(payload["options"]["num_predict"], 1_800)
+        self.assertEqual(payload["options"]["num_ctx"], 8_192)
+        self.assertEqual(request.kwargs["timeout"], 300)
         self.assertIn("Dr. Nanshu Lu", payload["messages"][0]["content"])
         self.assertIn("A testable idea", payload["messages"][1]["content"])
 
     @patch("app.requests.post")
-    def test_ollama_retries_without_thinking_when_final_answer_is_empty(self, mock_post):
+    def test_ollama_does_not_repeat_a_slow_request_when_output_is_empty(self, mock_post):
         os.environ["MODEL_PROVIDER"] = "ollama"
         os.environ["OLLAMA_MODEL"] = "qwen3.5:9b"
-        thinking_only = Mock()
-        thinking_only.json.return_value = {
-            "message": {"content": "", "thinking": "reasoning used the output budget"}
+        mock_post.return_value.json.return_value = {
+            "message": {"content": "", "thinking": ""}
         }
-        final_answer = Mock()
-        final_answer.json.return_value = {
-            "message": {"content": "Recovered final feedback", "thinking": ""}
-        }
-        mock_post.side_effect = [thinking_only, final_answer]
 
-        result = call_model(
-            "Review category: Research ideas\nContent: A testable idea.",
-            mentor_id="dr-nanshu-lu",
-        )
+        with self.assertRaisesRegex(ValueError, "Qwen 4B"):
+            call_model(
+                "Review category: Research ideas\nContent: A testable idea.",
+                mentor_id="dr-nanshu-lu",
+            )
 
-        self.assertEqual(result, "Recovered final feedback")
-        self.assertEqual(mock_post.call_count, 2)
-        first_payload = mock_post.call_args_list[0].kwargs["json"]
-        retry_payload = mock_post.call_args_list[1].kwargs["json"]
-        self.assertTrue(first_payload["think"])
-        self.assertFalse(retry_payload["think"])
-        self.assertEqual(retry_payload["options"]["num_predict"], 3_000)
+        self.assertEqual(mock_post.call_count, 1)
+        self.assertFalse(mock_post.call_args.kwargs["json"]["think"])
 
     def test_long_review_text_is_split_without_losing_content(self):
         text = ("A research claim with supporting evidence. " * 3_000).strip()
@@ -835,6 +863,32 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertIn("First section review", final_prompt)
         self.assertIn("Second section review", final_prompt)
         self.assertNotIn("A" * 1_000, final_prompt)
+        partial_payload = mock_post.call_args_list[0].kwargs["json"]
+        final_payload = mock_post.call_args_list[2].kwargs["json"]
+        self.assertFalse(partial_payload["think"])
+        self.assertEqual(partial_payload["options"]["num_predict"], 700)
+        self.assertEqual(final_payload["options"]["num_predict"], 1_800)
+        self.assertLessEqual(partial_payload["options"]["num_ctx"], 16_384)
+        self.assertLessEqual(final_payload["options"]["num_ctx"], 16_384)
+
+    @patch("app.requests.post")
+    def test_ollama_caps_large_review_at_three_sections_plus_synthesis(self, mock_post):
+        os.environ["MODEL_PROVIDER"] = "ollama"
+        responses = []
+        for content in ("Beginning review", "Middle review", "Ending review", "Final synthesis"):
+            response = Mock()
+            response.json.return_value = {"message": {"content": content, "thinking": ""}}
+            responses.append(response)
+        mock_post.side_effect = responses
+
+        result = call_model("A" * 300_000, mentor_id="dr-nanshu-lu")
+
+        self.assertEqual(result, "Final synthesis")
+        self.assertEqual(mock_post.call_count, 4)
+        synthesis = mock_post.call_args_list[-1].kwargs["json"]["messages"][1]["content"]
+        self.assertIn("Beginning review", synthesis)
+        self.assertIn("Middle review", synthesis)
+        self.assertIn("Ending review", synthesis)
 
     @patch("app.Anthropic")
     def test_claude_receives_mentor_profile_and_review(self, mock_anthropic):
