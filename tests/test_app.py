@@ -6,7 +6,14 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from app import app, build_feedback_prompt, call_model, load_mentor_prompt, split_review_text
+from app import (
+    app,
+    build_feedback_prompt,
+    call_model,
+    load_mentor_prompt,
+    render_markdown_html,
+    split_review_text,
+)
 from docx import Document
 from pptx import Presentation
 
@@ -552,6 +559,37 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertIn("Dr. Nanshu Lu", prompt)
         self.assertIn("specialty, thinking process, and feedback style", prompt)
         self.assertIn("strength of the argument", prompt)
+        self.assertIn("## Critical questions", prompt)
+        self.assertIn("do not number questions as new sections", prompt)
+
+    def test_feedback_markdown_repairs_math_sections_and_nested_questions(self):
+        feedback = r"""6. Critical questions
+
+7. What are the sample sizes ($n$)?
+
+8. Report error bars ($\pm$ SD).
+
+9. Is the result significant ($p > 0.05$)?
+
+10. Is the fabrication complexity justified?
+
+11. Prioritized revisions
+
+12. Add sample sizes.
+
+13. Add error bars."""
+
+        rendered = render_markdown_html(feedback)
+
+        self.assertIn("<h2>Critical questions</h2>", rendered)
+        self.assertIn("<li>What are the sample sizes (n)?</li>", rendered)
+        self.assertIn("<li>Report error bars (± SD).</li>", rendered)
+        self.assertIn("<li>Is the result significant (p &gt; 0.05)?</li>", rendered)
+        self.assertIn("<h2>Prioritized revisions</h2>", rendered)
+        self.assertIn("<ol>", rendered)
+        self.assertNotIn('<ol start="6">', rendered)
+        self.assertNotIn("$n$", rendered)
+        self.assertNotIn(r"\pm", rendered)
 
     def test_mentor_style_prompts_are_available_for_all_three_modes(self):
         research_prompt = load_mentor_prompt("dr-nanshu-lu", "research-ideas")
