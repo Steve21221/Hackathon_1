@@ -1,6 +1,6 @@
 # Promptly - Python local AI feedback website
 
-Promptly is a local-first Python website for uploading work and receiving category-specific, mentor-style feedback. It can use the open-source Qwen 3.5 model through Ollama entirely on the user's computer, with OpenAI or Anthropic Claude available as optional paid API alternatives. The project does not train or fine-tune models; it only sends extracted text to a selected inference provider. Application logic runs in Python with Flask, while a small JavaScript enhancement displays selected PI-style reference files.
+Promptly is a local-first Python website for uploading work and receiving category-specific, mentor-style feedback. It can use Qwen 3.5 or Phi-4 Mini through Ollama entirely on the user's computer, with OpenAI or Anthropic Claude available as optional paid API alternatives. The project does not train or fine-tune models; it only sends extracted text to a selected inference provider. Application logic runs in Python with Flask, while a small JavaScript enhancement displays selected PI-style reference files.
 
 ## Supported files
 
@@ -55,7 +55,7 @@ Any mentor can be deleted from **Modify a review style** after selecting their c
 
 ### Easy setup (recommended)
 
-The downloadable setup script installs Promptly in `%LOCALAPPDATA%\Promptly`, prepares its private Python environment, installs Ollama when needed, downloads the selected Qwen model, and creates a **Promptly** desktop shortcut.
+The downloadable setup script installs Promptly in `%LOCALAPPDATA%\Promptly`, prepares its private Python environment, installs Ollama when needed, downloads the selected local model or model pair, and creates a **Promptly** desktop shortcut.
 
 1. On the repository page, select **Code**, then **Download ZIP**.
 2. Extract the ZIP file in Downloads. The setup script will be inside the extracted repository folder at `Hackathon_1-main\installer\Promptly-Setup.ps1`.
@@ -76,6 +76,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Downloads\Promptly-Se
 4. Choose a model based on the computer:
 
    - Qwen 3.5 4B: approximately 3.4 GB; start here for a computer with 16 GB RAM.
+   - Phi-4 Mini: approximately 2.5 GB; faster responses with somewhat less comprehensive scientific critique.
+   - Qwen 3.5 4B + Phi-4 Mini: approximately 5.9 GB; installs both so users can switch between quality and speed in **Model settings**.
    - Qwen 3.5 9B: approximately 6.6 GB; recommended default for 32 GB RAM.
    - Qwen 3.5 27B: approximately 17 GB; strongest offered setup option, recommended for 64 GB RAM.
 
@@ -172,7 +174,7 @@ Without a `.env` file, the website works in demo mode and makes no model request
 
 ## Run a local reasoning model with Ollama
 
-The recommended local provider is Ollama with Qwen 3.5. Copy `.env.example` to `.env`, then use:
+The recommended local provider is Ollama with Qwen 3.5 for critique quality or Phi-4 Mini for faster responses. Copy `.env.example` to `.env`, then use:
 
 ```text
 MODEL_PROVIDER=ollama
@@ -180,13 +182,15 @@ OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=qwen3.5:9b
 ```
 
-The application sends the mentor instructions and extracted file text to Ollama's local API. Thinking mode is enabled so the model can reason before answering, but only the final feedback is displayed. The request uses a 32,768-token working context and limits the final response to 2,000 tokens.
+The application sends the mentor instructions and extracted file text to Ollama's local API. Thinking mode is disabled for lower latency. Promptly dynamically sizes the working context between 8,192 and 16,384 tokens and limits a direct final response to 1,800 tokens.
 
 Ollama and the selected model must be installed and running. To install the default model manually:
 
 ```powershell
 ollama pull qwen3.5:9b
 ```
+
+For the faster local option, use `ollama pull phi4-mini`, then select **Phi-4 Mini** under **Model settings**.
 
 No content is sent to OpenAI when `MODEL_PROVIDER=ollama`.
 
@@ -259,7 +263,7 @@ Run the complete test suite from the project folder with:
 
 Promptly extracts the uploaded file's text, identifies the selected feedback category, includes the optional focus, and combines it with the mentor prompt. It then sends that request to the provider selected in `.env`:
 
-- `ollama`: a local Qwen model; no API key or per-token charge.
+- `ollama`: a local Qwen or Phi model; no API key or per-token charge.
 - `openai`: the OpenAI Responses API; requires an API key and incurs API usage charges.
 - `claude` (or `anthropic`): the Anthropic Messages API; requires an API key and incurs API usage charges.
 - `demo`: no model request; returns a local confirmation message.

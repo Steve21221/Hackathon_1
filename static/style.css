@@ -251,6 +251,7 @@ button.mentor-card .mentor-selected,button.type-choice .choice-check { justify-s
 .settings-form > .form-label { font-family:Arial,sans-serif; color:#3f4d44; letter-spacing:.04em; }
 .settings-group { display:grid; gap:14px; padding:16px; border:1px solid rgba(23,35,28,.1); border-radius:16px; background:rgba(235,241,233,.42); }
 .settings-group .form-label { font-family:Arial,sans-serif; color:#3f4d44; letter-spacing:.04em; }
+.settings-model-note { margin:0; color:var(--muted); font:400 11px/1.5 Arial,sans-serif; }
 .settings-form .form-label select,
 .settings-form .form-label input {
   margin-top:9px;

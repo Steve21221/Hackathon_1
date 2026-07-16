@@ -81,6 +81,13 @@ SETTINGS_KEYS = (
 SECRET_SETTINGS_KEYS = {"OPENAI_API_KEY", "ANTHROPIC_API_KEY"}
 app.config["OUTPUT_DIR"] = PROJECT_ROOT / "outputs"
 app.config["MENTOR_LIBRARY_DIR"] = PROJECT_ROOT / "mentor_files"
+OLLAMA_MODEL_OPTIONS = (
+    ("qwen3.5:4b", "Qwen 3.5 4B — best scientific critique"),
+    ("phi4-mini", "Phi-4 Mini — faster responses"),
+    ("qwen3.5:9b", "Qwen 3.5 9B — larger quality model"),
+    ("qwen3.5:27b", "Qwen 3.5 27B — high-memory systems"),
+)
+OLLAMA_MODEL_VALUES = {value for value, _label in OLLAMA_MODEL_OPTIONS}
 
 
 def default_settings() -> dict[str, str]:
@@ -1706,6 +1713,8 @@ def prompt_library_context(
         "provider_label": provider_status_label(provider),
         "working_label": working_label(provider),
         "model_settings": public_settings(),
+        "ollama_model_options": OLLAMA_MODEL_OPTIONS,
+        "ollama_model_values": OLLAMA_MODEL_VALUES,
         "prompt_cards": persisted["prompt_cards"],
         "prompt_output_location": persisted["prompt_output_location"],
         "prompt_run_location": persisted["prompt_run_location"],

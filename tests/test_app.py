@@ -616,6 +616,46 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertEqual(payload["model_provider"], "demo")
         self.assertIn(b"Model settings", self.client.get("/").data)
 
+    def test_local_model_selector_offers_qwen_and_phi_in_both_workspaces(self):
+        for path in ("/", "/prompt-library"):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, 200)
+                self.assertIn(b'<select name="OLLAMA_MODEL" data-ollama-model>', response.data)
+                self.assertIn(b'value="qwen3.5:4b"', response.data)
+                self.assertIn(b'value="phi4-mini"', response.data)
+                self.assertIn(b"best scientific critique", response.data)
+                self.assertIn(b"faster responses", response.data)
+
+    def test_settings_api_can_switch_to_phi4_mini(self):
+        response = self.client.post(
+            "/api/settings",
+            json={
+                "MODEL_PROVIDER": "ollama",
+                "OLLAMA_BASE_URL": "http://127.0.0.1:11434",
+                "OLLAMA_MODEL": "phi4-mini",
+                "OPENAI_API_KEY": "",
+                "OPENAI_MODEL": "gpt-5-mini",
+                "ANTHROPIC_API_KEY": "",
+                "CLAUDE_MODEL": "claude-sonnet-4-5",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["settings"]["OLLAMA_MODEL"], "phi4-mini")
+        self.assertEqual(self.client.get("/api/settings").get_json()["OLLAMA_MODEL"], "phi4-mini")
+        home = self.client.get("/")
+        self.assertIn(b'<option value="phi4-mini" selected>', home.data)
+
+    def test_installer_can_download_phi_or_both_recommended_models(self):
+        installer = (Path("installer") / "Promptly-Setup.ps1").read_text(encoding="utf-8")
+
+        self.assertIn('"4" { @("phi4-mini") }', installer)
+        self.assertIn('"5" { @("qwen3.5:4b", "phi4-mini") }', installer)
+        self.assertIn("foreach ($downloadModel in $models)", installer)
+        self.assertIn("OLLAMA_MODEL=$model", installer)
+        self.assertIn("Installed model(s): $($models -join ', ')", installer)
+
     def test_rejects_wrong_file_type(self):
         response = self.client.post(
             "/feedback",

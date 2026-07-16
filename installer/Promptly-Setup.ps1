@@ -175,21 +175,29 @@ try {
     }
 
     Write-Step "Choose the local reasoning model"
-    Write-Host "1. Qwen 3.5 4B  - about 3.4 GB; recommended for 16 GB RAM"
+    Write-Host "1. Qwen 3.5 4B  - about 3.4 GB; best scientific critique on laptop hardware"
     Write-Host "2. Qwen 3.5 9B  - about 6.6 GB; recommended for 32 GB RAM (default)"
     Write-Host "3. Qwen 3.5 27B - about 17 GB; recommended for 64 GB RAM"
-    $choice = Read-Host "Enter 1, 2, or 3"
-    $model = switch ($choice) {
-        "1" { "qwen3.5:4b" }
-        "3" { "qwen3.5:27b" }
-        default { "qwen3.5:9b" }
-    }
+    Write-Host "4. Phi-4 Mini     - about 2.5 GB; faster responses on laptop hardware"
+    Write-Host "5. Qwen 4B + Phi - about 5.9 GB; install both and switch in the website"
+    $choice = Read-Host "Enter 1, 2, 3, 4, or 5"
+    $models = @(switch ($choice) {
+        "1" { @("qwen3.5:4b") }
+        "3" { @("qwen3.5:27b") }
+        "4" { @("phi4-mini") }
+        "5" { @("qwen3.5:4b", "phi4-mini") }
+        default { @("qwen3.5:9b") }
+    })
+    $model = $models[0]
 
-    Write-Step "Downloading $model"
+    Write-Step "Downloading selected local model(s)"
     Write-Host "This is the largest part of setup and may take a while."
-    & $ollama pull $model
-    if ($LASTEXITCODE -ne 0) {
-        throw "The model download did not complete. Run this setup again when the internet connection is stable."
+    foreach ($downloadModel in $models) {
+        Write-Host "Downloading $downloadModel"
+        & $ollama pull $downloadModel
+        if ($LASTEXITCODE -ne 0) {
+            throw "The $downloadModel download did not complete. Run this setup again when the internet connection is stable."
+        }
     }
 
     $environmentContents = @"
@@ -233,7 +241,8 @@ if errorlevel 1 pause
 
     Write-Host "`nPromptly is installed successfully." -ForegroundColor Green
     Write-Host "Installed at: $InstallDirectory"
-    Write-Host "Model: $model"
+    Write-Host "Installed model(s): $($models -join ', ')"
+    Write-Host "Default model: $model"
     Write-Host "Double-click Promptly on the desktop to start the website."
 }
 finally {
