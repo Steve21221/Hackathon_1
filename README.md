@@ -42,6 +42,8 @@ Currently available:
 
 Dr. Lu's version-controlled starting profile contains three category-specific files under `Mentor_Data/dr-nanshu-lu/`: `meeting_research_pi.txt`, `paper_proposal_pi.txt`, and `slides_talk_pi.txt`. Promptly automatically loads the file matching the selected feedback category. Additional built-in mentors can be added with the same three-file structure and a corresponding `MENTORS` entry.
 
+Built-in mentors also appear in **Modify a review style**. When local reference files are uploaded for a built-in mentor, Promptly saves the learned prompt under `mentor_files/<mentor-slug>/` and uses it in the feedback workspace for that matching category. Categories without a local update continue using the version-controlled `Mentor_Data` starting prompt. Locally created mentor libraries use the same registry and automatically appear in the feedback workspace after a prompt is generated.
+
 ## Contributors
 
 - Steve21221

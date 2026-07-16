@@ -10,6 +10,7 @@ from app import (
     app,
     build_feedback_prompt,
     call_model,
+    extract_generated_prompt,
     load_mentor_prompt,
     render_markdown_html,
     split_review_text,
@@ -192,6 +193,8 @@ class PromptlyTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Choose your mentor", response.data)
+        self.assertIn(b"Dr. Nanshu Lu", response.data)
+        self.assertIn(b'value="dr-nanshu-lu"', response.data)
         self.assertIn(b"Card Mentor", response.data)
         self.assertIn(b"PI-style library", response.data)
         self.assertIn(b'class="mentor-card selected"', response.data)
@@ -211,6 +214,49 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertIn(b'form="delete-mentor-form"', response.data)
         self.assertIn(b'name="selected_prompt_mentor"', response.data)
         self.assertNotIn(b'formaction="/delete-mentor"', response.data)
+
+    def test_builtin_mentor_library_is_shared_with_feedback_workspace(self):
+        selected = self.client.get("/prompt-library?prompt_mentor=dr-nanshu-lu")
+        self.assertEqual(selected.status_code, 200)
+        self.assertIn(b"Dr. Nanshu Lu", selected.data)
+        self.assertIn(b"Built-in mentor", selected.data)
+
+        library_api = self.client.get("/api/library/dr-nanshu-lu")
+        self.assertEqual(library_api.status_code, 200)
+        self.assertEqual(library_api.get_json()["name"], "Dr. Nanshu Lu")
+
+        created = self.client.post(
+            "/generate-prompts",
+            data={
+                "selected_prompt_mentor": "dr-nanshu-lu",
+                "slide_files": (
+                    BytesIO(b"Make the central takeaway explicit and remove duplicate panels."),
+                    "local-slides.txt",
+                ),
+            },
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(created.status_code, 200)
+        local_prompt = (
+            Path(app.config["MENTOR_LIBRARY_DIR"])
+            / "dr-nanshu-lu"
+            / "slides_talk_pi"
+            / "prompt.txt"
+        )
+        self.assertTrue(local_prompt.is_file())
+
+        self.assertEqual(
+            load_mentor_prompt("dr-nanshu-lu", "talks-slides"),
+            extract_generated_prompt(local_prompt.read_text(encoding="utf-8")),
+        )
+        self.assertIn(
+            "falsifiable",
+            load_mentor_prompt("dr-nanshu-lu", "research-ideas").lower(),
+        )
+
+        home = self.client.get("/")
+        self.assertEqual(home.status_code, 200)
+        self.assertIn(b"Built-in profile with local updates", home.data)
 
     def test_named_prompt_library_persists_files_and_stable_prompts(self):
         response = self.client.post(

@@ -317,6 +317,18 @@ def list_feedback_mentors() -> dict[str, dict[str, str]]:
     for library in list_prompt_mentors():
         slug = library["slug"]
         if slug in mentors:
+            ready_labels = [
+                str(MODE_DEFINITIONS[mode]["label"])
+                for mode in MODE_DEFINITIONS
+                if (mode_dir_for_mentor(slug, mode) / "prompt.txt").is_file()
+            ]
+            if ready_labels:
+                mentors[slug]["source"] = "library"
+                mentors[slug]["description"] = (
+                    "Built-in profile with local updates for: "
+                    + "; ".join(ready_labels)
+                    + "."
+                )
             continue
         mentors[slug] = {
             "name": library["name"],
@@ -356,20 +368,15 @@ def load_mentor_prompt(mentor_id: str, content_type: str | None = None) -> str:
     if not mentor:
         raise ValueError("Please choose an available mentor.")
 
-    if mentor.get("source") == "library":
-        requested_mode = CONTENT_TYPE_TO_MODE.get((content_type or "").strip().lower(), "")
-        ready_modes = [
-            mode
-            for mode in MODE_DEFINITIONS
-            if (mode_dir_for_mentor(mentor_id, mode) / "prompt.txt").is_file()
-        ]
-        if not ready_modes:
-            raise ValueError(
-                f"No generated prompts for {mentor['name']} yet. "
-                "Upload references and generate prompts first."
-            )
-
-        selected_mode = requested_mode if requested_mode in ready_modes else ready_modes[0]
+    requested_value = (content_type or "").strip().lower()
+    requested_mode = CONTENT_TYPE_TO_MODE.get(requested_value, requested_value)
+    ready_modes = [
+        mode
+        for mode in MODE_DEFINITIONS
+        if (mode_dir_for_mentor(mentor_id, mode) / "prompt.txt").is_file()
+    ]
+    if requested_mode in ready_modes:
+        selected_mode = requested_mode
         prompt_path = mode_dir_for_mentor(mentor_id, selected_mode) / "prompt.txt"
         try:
             content = prompt_path.read_text(encoding="utf-8").strip()
@@ -378,32 +385,48 @@ def load_mentor_prompt(mentor_id: str, content_type: str | None = None) -> str:
         prompt = extract_generated_prompt(content)
         if not prompt:
             raise ValueError(f"The prompt profile for {mentor['name']} is empty.")
-        if requested_mode and selected_mode != requested_mode:
-            requested_label = MODE_DEFINITIONS[requested_mode]["label"]
-            selected_label = MODE_DEFINITIONS[selected_mode]["label"]
-            return (
-                f"{prompt}\n\n"
-                f"Note: No {requested_label} prompt was generated for this library yet, "
-                f"so use the review style learned from {selected_label}. "
-                "Keep the style, but apply it to the uploaded feedback category."
-            )
         return prompt
 
-    requested_value = (content_type or "").strip().lower()
-    requested_mode = CONTENT_TYPE_TO_MODE.get(requested_value, requested_value)
-    prompt_files = mentor.get("prompt_files", {})
-    selected_mode = requested_mode if requested_mode in prompt_files else "meeting_research_pi"
-    prompt_file = prompt_files.get(selected_mode)
-    if not prompt_file:
-        raise ValueError(f"The prompt profile for {mentor['name']} is unavailable.")
-    prompt_path = MENTOR_DATA_DIRECTORY / prompt_file
-    try:
-        prompt = prompt_path.read_text(encoding="utf-8").strip()
-    except OSError as exc:
-        raise ValueError(f"The prompt profile for {mentor['name']} is unavailable.") from exc
-    if not prompt:
-        raise ValueError(f"The prompt profile for {mentor['name']} is empty.")
-    return prompt
+    if mentor_id in MENTORS:
+        prompt_files = MENTORS[mentor_id].get("prompt_files", {})
+        selected_mode = requested_mode if requested_mode in prompt_files else "meeting_research_pi"
+        prompt_file = prompt_files.get(selected_mode)
+        if not prompt_file:
+            raise ValueError(f"The prompt profile for {mentor['name']} is unavailable.")
+        prompt_path = MENTOR_DATA_DIRECTORY / prompt_file
+        try:
+            prompt = prompt_path.read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            raise ValueError(f"The prompt profile for {mentor['name']} is unavailable.") from exc
+        if not prompt:
+            raise ValueError(f"The prompt profile for {mentor['name']} is empty.")
+        return prompt
+
+    if ready_modes:
+        selected_mode = ready_modes[0]
+        prompt_path = mode_dir_for_mentor(mentor_id, selected_mode) / "prompt.txt"
+        try:
+            content = prompt_path.read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            raise ValueError(f"The prompt profile for {mentor['name']} is unavailable.") from exc
+        prompt = extract_generated_prompt(content)
+        if not prompt:
+            raise ValueError(f"The prompt profile for {mentor['name']} is empty.")
+        requested_label = MODE_DEFINITIONS.get(requested_mode, {}).get(
+            "label", "requested category"
+        )
+        selected_label = MODE_DEFINITIONS[selected_mode]["label"]
+        return (
+            f"{prompt}\n\n"
+            f"Note: No {requested_label} prompt was generated for this library yet, "
+            f"so use the review style learned from {selected_label}. "
+            "Keep the style, but apply it to the uploaded feedback category."
+        )
+
+    raise ValueError(
+        f"No generated prompts for {mentor['name']} yet. "
+        "Upload references and generate prompts first."
+    )
 
 
 def call_model(
@@ -967,20 +990,55 @@ def prompt_mentor_initials(name: str) -> str:
     return "".join(word[0] for word in words[:2])
 
 
-def list_prompt_mentors() -> list[dict[str, str]]:
+def list_prompt_mentors() -> list[dict[str, Any]]:
+    mentors_by_slug: dict[str, dict[str, Any]] = {
+        mentor_id: {
+            "slug": mentor_id,
+            "name": mentor["name"],
+            "initials": mentor["initials"],
+            "status": "Built-in mentor",
+            "description": (
+                "Version-controlled starting prompts; local updates override matching categories."
+            ),
+            "source": "static",
+            "deletable": False,
+        }
+        for mentor_id, mentor in MENTORS.items()
+    }
     root = get_mentor_library_dir()
-    if not root.exists():
-        return []
-    mentors: list[dict[str, str]] = []
-    for child in sorted(root.iterdir(), key=lambda path: path.name.lower()):
-        if child.is_dir():
+    if root.exists():
+        for child in sorted(root.iterdir(), key=lambda path: path.name.lower()):
+            if not child.is_dir():
+                continue
             mentor = read_prompt_mentor(child.name)
-            if mentor:
-                mentor["initials"] = prompt_mentor_initials(mentor["name"])
-                mentor["status"] = "PI-style library"
-                mentor["description"] = "Stored reference files and generated prompts for this mentor."
-                mentors.append(mentor)
-    return mentors
+            if not mentor:
+                continue
+            slug = mentor["slug"]
+            is_builtin = slug in MENTORS
+            mentor["initials"] = prompt_mentor_initials(mentor["name"])
+            mentor["status"] = "Built-in + local updates" if is_builtin else "PI-style library"
+            mentor["description"] = (
+                "Version-controlled starting prompts with locally generated category updates."
+                if is_builtin
+                else "Stored reference files and generated prompts for this mentor."
+            )
+            mentor["source"] = "hybrid" if is_builtin else "library"
+            mentor["deletable"] = not is_builtin
+            mentors_by_slug[slug] = mentor
+    return sorted(
+        mentors_by_slug.values(),
+        key=lambda mentor: str(mentor["name"]).lower(),
+    )
+
+
+def prompt_mentor_profile(slug: str) -> dict[str, Any] | None:
+    safe_slug = mentor_slug(slug)
+    if safe_slug != slug.strip().lower():
+        return None
+    return next(
+        (mentor for mentor in list_prompt_mentors() if mentor["slug"] == safe_slug),
+        None,
+    )
 
 
 def resolve_prompt_mentor(selected_slug: str = "", new_name: str = "") -> dict[str, str]:
@@ -990,6 +1048,9 @@ def resolve_prompt_mentor(selected_slug: str = "", new_name: str = "") -> dict[s
         existing = read_prompt_mentor(selected_slug)
         if existing:
             return existing
+        builtin = MENTORS.get(selected_slug.strip().lower())
+        if builtin:
+            return ensure_prompt_mentor(str(builtin["name"]))
         raise ValueError("Please select an existing mentor or create a new one.")
     return ensure_prompt_mentor("PI Style Library")
 
@@ -1266,10 +1327,10 @@ def prompt_library_context(
     selected_prompt_mentor = context.get("selected_prompt_mentor", "")
     if not selected_prompt_mentor:
         selected_prompt_mentor = request.args.get("prompt_mentor", "").strip().lower()
-    if selected_prompt_mentor and not read_prompt_mentor(selected_prompt_mentor):
+    if selected_prompt_mentor and not prompt_mentor_profile(selected_prompt_mentor):
         selected_prompt_mentor = ""
     selected_profile = (
-        read_prompt_mentor(selected_prompt_mentor) if selected_prompt_mentor else None
+        prompt_mentor_profile(selected_prompt_mentor) if selected_prompt_mentor else None
     )
     provider = current_provider()
     persisted = load_prompt_cards_for_mentor(selected_prompt_mentor)
@@ -1576,9 +1637,9 @@ def library_state(slug: str):
                 "prompt_message": "",
             }
         )
-    if safe_slug != slug.strip().lower() or read_prompt_mentor(safe_slug) is None:
+    profile = prompt_mentor_profile(safe_slug)
+    if safe_slug != slug.strip().lower() or profile is None:
         return jsonify({"error": "Library not found."}), 404
-    profile = read_prompt_mentor(safe_slug) or {"slug": safe_slug, "name": safe_slug}
     payload = load_prompt_cards_for_mentor(safe_slug)
     payload.update(
         {
