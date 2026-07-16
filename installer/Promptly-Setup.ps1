@@ -24,7 +24,10 @@ function Test-PythonCommand([string]$Executable, [string[]]$Arguments = @()) {
 function Find-Python {
     $launcher = Get-Command py -ErrorAction SilentlyContinue
     if ($launcher -and (Test-PythonCommand $launcher.Source @("-3.12"))) {
-        return @($launcher.Source, "-3.12")
+        return [pscustomobject]@{
+            Executable = $launcher.Source
+            Arguments = @("-3.12")
+        }
     }
 
     $python = Get-Command python -ErrorAction SilentlyContinue
@@ -33,12 +36,18 @@ function Find-Python {
         $python.Source -notlike "*WindowsApps*" -and
         (Test-PythonCommand $python.Source)
     ) {
-        return @($python.Source)
+        return [pscustomobject]@{
+            Executable = $python.Source
+            Arguments = @()
+        }
     }
 
     $candidate = "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe"
     if ((Test-Path $candidate) -and (Test-PythonCommand $candidate)) {
-        return @($candidate)
+        return [pscustomobject]@{
+            Executable = $candidate
+            Arguments = @()
+        }
     }
     return $null
 }
@@ -109,11 +118,8 @@ try {
     }
 
     Write-Step "Creating Promptly's private Python environment"
-    $pythonExecutable = $pythonCommand[0]
-    $pythonArguments = @()
-    if ($pythonCommand.Count -gt 1) {
-        $pythonArguments += $pythonCommand[1..($pythonCommand.Count - 1)]
-    }
+    $pythonExecutable = $pythonCommand.Executable
+    $pythonArguments = @($pythonCommand.Arguments)
     & $pythonExecutable @pythonArguments -m venv (Join-Path $InstallDirectory ".venv")
     $venvPython = Join-Path $InstallDirectory ".venv\Scripts\python.exe"
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path $venvPython)) {
