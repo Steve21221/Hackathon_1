@@ -53,8 +53,16 @@ app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024
 
 MAX_PROMPT_LENGTH = 4_000
 MAX_EXTRACTED_TEXT = 100_000
-MAX_LOCAL_EXTRACTED_TEXT = 500_000
-OLLAMA_REVIEW_CHUNK_CHARS = 50_000
+MAX_LOCAL_EXTRACTED_TEXT = 120_000
+OLLAMA_REVIEW_CHUNK_CHARS = 42_000
+OLLAMA_MAX_REVIEW_CHUNKS = 3
+OLLAMA_MIN_CONTEXT_TOKENS = 8_192
+OLLAMA_MAX_CONTEXT_TOKENS = 16_384
+OLLAMA_REQUEST_TIMEOUT = 300
+OLLAMA_KEEP_ALIVE = "30m"
+OLLAMA_DIRECT_OUTPUT_TOKENS = 1_800
+OLLAMA_PARTIAL_OUTPUT_TOKENS = 700
+OLLAMA_SYNTHESIS_OUTPUT_TOKENS = 1_800
 MAX_PROMPT_PREVIEW_SEGMENTS = 3
 DELETE_REFERENCE_FILE_ERROR = "Please select an existing library file to delete."
 MENTOR_RUN_METADATA_FILENAME = ".mentor-run.json"
@@ -537,12 +545,20 @@ def request_ollama(
     prompt: str,
     attempts: tuple[tuple[bool, int], ...],
 ) -> str:
-    """Request one Ollama answer, retrying without thinking if final content is empty."""
+    """Request one latency-bounded Ollama answer."""
     messages = [
         {"role": "system", "content": instructions},
         {"role": "user", "content": prompt},
     ]
     for think, output_tokens in attempts:
+        estimated_input_tokens = max(1, (len(instructions) + len(prompt) + 3) // 4)
+        context_tokens = min(
+            OLLAMA_MAX_CONTEXT_TOKENS,
+            max(
+                OLLAMA_MIN_CONTEXT_TOKENS,
+                estimated_input_tokens + output_tokens + 1_024,
+            ),
+        )
         response = requests.post(
             f"{base_url}/api/chat",
             json={
@@ -550,13 +566,14 @@ def request_ollama(
                 "messages": messages,
                 "think": think,
                 "stream": False,
+                "keep_alive": OLLAMA_KEEP_ALIVE,
                 "options": {
                     "temperature": 0.2,
-                    "num_ctx": 32_768,
+                    "num_ctx": context_tokens,
                     "num_predict": output_tokens,
                 },
             },
-            timeout=600,
+            timeout=OLLAMA_REQUEST_TIMEOUT,
         )
         response.raise_for_status()
         data = response.json()
@@ -569,8 +586,21 @@ def request_ollama(
             )
 
     raise ValueError(
-        "Ollama could not produce a final response. Try a shorter file or a more focused request."
+        "Ollama could not produce a final response. Try the Qwen 4B model, a shorter file, "
+        "or a more focused request."
     )
+
+
+def select_review_chunks(chunks: list[str]) -> list[str]:
+    """Bound local model work while retaining the beginning, middle, and end."""
+    if len(chunks) <= OLLAMA_MAX_REVIEW_CHUNKS:
+        return chunks
+    last_index = len(chunks) - 1
+    indexes = [
+        round(position * last_index / (OLLAMA_MAX_REVIEW_CHUNKS - 1))
+        for position in range(OLLAMA_MAX_REVIEW_CHUNKS)
+    ]
+    return [chunks[index] for index in indexes]
 
 
 FEEDBACK_SECTION_TITLES = {
@@ -590,43 +620,233 @@ LATEX_SYMBOLS = {
     r"\pm": "±",
     r"\times": "×",
     r"\cdot": "·",
+    r"\div": "÷",
     r"\le": "≤",
     r"\leq": "≤",
     r"\ge": "≥",
     r"\geq": "≥",
     r"\neq": "≠",
     r"\approx": "≈",
+    r"\sim": "∼",
+    r"\infty": "∞",
+    r"\partial": "∂",
+    r"\nabla": "∇",
+    r"\sum": "Σ",
+    r"\prod": "Π",
+    r"\rightarrow": "→",
+    r"\to": "→",
     r"\mu": "μ",
     r"\sigma": "σ",
     r"\alpha": "α",
     r"\beta": "β",
+    r"\gamma": "γ",
+    r"\theta": "θ",
+    r"\lambda": "λ",
+    r"\rho": "ρ",
+    r"\omega": "ω",
     r"\Delta": "Δ",
     r"\delta": "δ",
 }
 
+LATEX_TEXT_COMMANDS = (
+    "mathrm",
+    "mathbf",
+    "mathit",
+    "mathsf",
+    "mathtt",
+    "operatorname",
+    "textrm",
+    "textbf",
+    "textit",
+    "text",
+)
+LATEX_SUPERSCRIPTS = str.maketrans("0123456789+-=()n", "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿ")
+LATEX_SUBSCRIPTS = str.maketrans("0123456789+-=()aeiox", "₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎ₐₑᵢₒₓ")
+MAX_LATEX_EXPRESSION_CHARS = 4_000
 
-def normalize_inline_math(text: str) -> str:
-    """Convert common model-produced inline LaTeX into readable plain Unicode."""
-    def replace_math(match: re.Match[str]) -> str:
-        expression = match.group(1).strip()
-        # Some models escape an already escaped command (for example ``\\pm``).
-        expression = expression.replace("\\\\", "\\")
-        looks_like_math = (
+
+def read_braced_value(text: str, opening_index: int) -> tuple[str, int] | None:
+    """Read one balanced braced value and return its content and next index."""
+    if opening_index >= len(text) or text[opening_index] != "{":
+        return None
+    depth = 0
+    for index in range(opening_index, len(text)):
+        if text[index] == "{":
+            depth += 1
+        elif text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[opening_index + 1 : index], index + 1
+    return None
+
+
+def replace_latex_braced_commands(expression: str) -> str:
+    """Replace common commands with readable text without using recursive regex."""
+    wrappers = {command: (lambda value: value) for command in LATEX_TEXT_COMMANDS}
+    wrappers["sqrt"] = lambda value: f"√({value})"
+
+    output = expression
+    for _ in range(8):
+        changed = False
+        for command, formatter in wrappers.items():
+            marker = f"\\{command}"
+            cursor = 0
+            pieces: list[str] = []
+            while True:
+                start = output.find(marker, cursor)
+                if start < 0:
+                    pieces.append(output[cursor:])
+                    break
+                argument_start = start + len(marker)
+                while argument_start < len(output) and output[argument_start].isspace():
+                    argument_start += 1
+                parsed = read_braced_value(output, argument_start)
+                if parsed is None:
+                    pieces.append(output[cursor : start + len(marker)])
+                    cursor = start + len(marker)
+                    continue
+                value, next_index = parsed
+                pieces.append(output[cursor:start])
+                pieces.append(formatter(value))
+                cursor = next_index
+                changed = True
+            output = "".join(pieces)
+        if not changed:
+            break
+    return output
+
+
+def replace_latex_fractions(expression: str) -> str:
+    """Convert balanced LaTeX fraction commands into readable division."""
+    marker = r"\frac"
+    output = expression
+    for _ in range(8):
+        start = output.rfind(marker)
+        if start < 0:
+            break
+        numerator_start = start + len(marker)
+        while numerator_start < len(output) and output[numerator_start].isspace():
+            numerator_start += 1
+        numerator = read_braced_value(output, numerator_start)
+        if numerator is None:
+            output = output[:start] + "fraction " + output[start + len(marker) :]
+            continue
+        numerator_value, denominator_start = numerator
+        while denominator_start < len(output) and output[denominator_start].isspace():
+            denominator_start += 1
+        denominator = read_braced_value(output, denominator_start)
+        if denominator is None:
+            output = output[:start] + "fraction " + output[start + len(marker) :]
+            continue
+        denominator_value, next_index = denominator
+        replacement = f"({numerator_value})/({denominator_value})"
+        output = output[:start] + replacement + output[next_index:]
+    return output
+
+
+def replace_latex_scripts(expression: str, marker: str, translation: dict[int, str]) -> str:
+    """Convert one-character or braced superscripts/subscripts to Unicode when possible."""
+    output: list[str] = []
+    cursor = 0
+    while cursor < len(expression):
+        if expression[cursor] != marker or cursor + 1 >= len(expression):
+            output.append(expression[cursor])
+            cursor += 1
+            continue
+        value = ""
+        next_index = cursor + 2
+        if expression[cursor + 1] == "{":
+            parsed = read_braced_value(expression, cursor + 1)
+            if parsed is None:
+                output.append(marker)
+                cursor += 1
+                continue
+            value, next_index = parsed
+        else:
+            value = expression[cursor + 1]
+        converted = value.translate(translation)
+        if len(converted) == len(value) and all(ord(char) > 127 for char in converted):
+            output.append(converted)
+        else:
+            output.append(f"{marker}({value})")
+        cursor = next_index
+    return "".join(output)
+
+
+def latex_expression_to_text(expression: str) -> str:
+    """Convert a bounded LaTeX math expression into readable plain Unicode."""
+    converted = expression.strip()
+    converted = re.sub(r"\\(?:begin|end)\{[^{}]{1,80}\}", " ", converted)
+    converted = converted.replace(r"\left", "").replace(r"\right", "")
+    converted = replace_latex_fractions(converted)
+    converted = replace_latex_braced_commands(converted)
+    for latex, symbol in sorted(LATEX_SYMBOLS.items(), key=lambda item: -len(item[0])):
+        converted = converted.replace(latex, symbol)
+    converted = re.sub(
+        r"\\(sin|cos|tan|log|ln|exp|min|max|mean|median)\b",
+        r"\1",
+        converted,
+    )
+    converted = replace_latex_scripts(converted, "^", LATEX_SUPERSCRIPTS)
+    converted = replace_latex_scripts(converted, "_", LATEX_SUBSCRIPTS)
+    converted = converted.replace(r"\%", "%").replace(r"\&", "&")
+    converted = converted.replace(r"\_", "_").replace(r"\#", "#")
+    converted = re.sub(r"\\[,;:!]", " ", converted)
+    converted = converted.replace(r"\\", "; ").replace("&", " ")
+    converted = re.sub(r"\\([A-Za-z]+)", r"\1", converted)
+    converted = converted.replace("{", "").replace("}", "")
+    return re.sub(r"\s+", " ", converted).strip()
+
+
+def replace_delimited_math(
+    text: str,
+    opener: str,
+    closer: str,
+    *,
+    allow_newlines: bool,
+) -> str:
+    """Replace bounded math spans while leaving currency and malformed delimiters intact."""
+    pieces: list[str] = []
+    cursor = 0
+    while cursor < len(text):
+        start = text.find(opener, cursor)
+        if start < 0:
+            pieces.append(text[cursor:])
+            break
+        end = text.find(closer, start + len(opener))
+        if end < 0:
+            pieces.append(text[cursor:])
+            break
+        expression = text[start + len(opener) : end]
+        valid_length = 0 < len(expression) <= MAX_LATEX_EXPRESSION_CHARS
+        valid_lines = allow_newlines or "\n" not in expression
+        looks_like_math = opener != "$" or (
             "\\" in expression
-            or len(expression) <= 3
+            or len(expression.strip()) <= 3
             or bool(re.search(r"[<>=^_]", expression))
         )
-        if not looks_like_math:
-            return match.group(0)
-        for latex, symbol in sorted(LATEX_SYMBOLS.items(), key=lambda item: -len(item[0])):
-            expression = expression.replace(latex, symbol)
-        expression = re.sub(r"\\(?:mathrm|text)\{([^{}]*)\}", r"\1", expression)
-        expression = expression.replace("^2", "²").replace("^3", "³")
-        expression = expression.replace("{", "").replace("}", "")
-        return expression
+        pieces.append(text[cursor:start])
+        if valid_length and valid_lines and looks_like_math:
+            pieces.append(latex_expression_to_text(expression))
+        else:
+            pieces.append(text[start : end + len(closer)])
+        cursor = end + len(closer)
+    return "".join(pieces)
 
-    normalized = re.sub(r"\$([^$\n]{1,120})\$", replace_math, text)
-    normalized = re.sub(r"\\\((.{1,120}?)\\\)", replace_math, normalized)
+
+def normalize_inline_math(text: str) -> str:
+    """Convert common inline and display LaTeX into readable plain Unicode."""
+    normalized = text.replace(r"\\(", r"\(").replace(r"\\)", r"\)")
+    normalized = normalized.replace(r"\\[", r"\[").replace(r"\\]", r"\]")
+    normalized = replace_delimited_math(
+        normalized,
+        r"\[",
+        r"\]",
+        allow_newlines=True,
+    )
+    normalized = replace_delimited_math(normalized, "$$", "$$", allow_newlines=True)
+    normalized = replace_delimited_math(normalized, r"\(", r"\)", allow_newlines=False)
+    normalized = replace_delimited_math(normalized, "$", "$", allow_newlines=False)
     return normalized
 
 
@@ -714,17 +934,17 @@ def call_ollama(
     *,
     chunk_large_prompt: bool = False,
 ) -> str:
-    """Generate local feedback with a thinking-capable model served by Ollama."""
+    """Generate local feedback with bounded non-thinking Ollama requests."""
     base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
     model = os.getenv("OLLAMA_MODEL", "qwen3.5:9b").strip() or "qwen3.5:9b"
-    chunks = split_review_text(prompt) if chunk_large_prompt else [prompt]
+    chunks = select_review_chunks(split_review_text(prompt)) if chunk_large_prompt else [prompt]
     if len(chunks) == 1:
         return request_ollama(
             base_url,
             model,
             instructions,
             prompt,
-            attempts=((True, 6_144), (False, 3_000)),
+            attempts=((False, OLLAMA_DIRECT_OUTPUT_TOKENS),),
         )
 
     partial_reviews: list[str] = []
@@ -742,7 +962,7 @@ def call_ollama(
                 model,
                 instructions,
                 partial_prompt,
-                attempts=((True, 2_048), (False, 1_500)),
+                attempts=((False, OLLAMA_PARTIAL_OUTPUT_TOKENS),),
             )
         )
 
@@ -763,7 +983,7 @@ def call_ollama(
         model,
         instructions,
         synthesis_prompt,
-        attempts=((True, 6_144), (False, 3_000)),
+        attempts=((False, OLLAMA_SYNTHESIS_OUTPUT_TOKENS),),
     )
 
 
