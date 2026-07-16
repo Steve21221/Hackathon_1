@@ -132,6 +132,7 @@ class PromptlyTestCase(unittest.TestCase):
         download = self.client.get(f"/download/{run_id}/meeting_research_pi_prompt")
         self.assertEqual(download.status_code, 200)
         self.assertIn(b"Generated PI-style prompt", download.data)
+        download.close()
 
         combined = (run_directory / "all_pi_style_prompts.txt").read_text(encoding="utf-8")
         self.assertIn("SOURCE FILES: meeting-notes.txt", combined)
@@ -413,6 +414,37 @@ class PromptlyTestCase(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn(b"not supported", response.data)
+
+    def test_damaged_feedback_files_return_clear_validation_error(self):
+        for content_type, filename in (
+            ("papers-proposals", "broken.pdf"),
+            ("papers-proposals", "broken.docx"),
+            ("talks-slides", "broken.pptx"),
+        ):
+            with self.subTest(filename=filename):
+                response = self.client.post(
+                    "/feedback",
+                    data={
+                        "content_type": content_type,
+                        "mentor_id": "dr-nanshu-lu",
+                        "file": (BytesIO(b"not a real file"), filename),
+                    },
+                    content_type="multipart/form-data",
+                )
+                self.assertEqual(response.status_code, 400)
+                self.assertIn(b"could not be read", response.data)
+
+    def test_damaged_reference_file_returns_clear_validation_error(self):
+        response = self.client.post(
+            "/generate-prompts",
+            data={
+                "prompt_mentor_name": "Damaged Reference",
+                "research_files": (BytesIO(b"not a real PDF"), "broken.pdf"),
+            },
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(b"could not be read", response.data)
 
     def test_rejects_unknown_mentor(self):
         response = self.client.post(

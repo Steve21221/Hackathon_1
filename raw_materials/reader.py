@@ -93,16 +93,23 @@ def extract_text_from_upload(file_bytes: bytes, filename: str) -> str:
         allowed = ", ".join(sorted(SUPPORTED_EXTENSIONS))
         raise ValueError(f"Unsupported file type. Use one of: {allowed}.")
 
-    if extension in {".txt", ".md"}:
-        text = extract_plain_text(file_bytes)
-    elif extension == ".docx":
-        text = extract_docx(file_bytes)
-    elif extension == ".pdf":
-        text = extract_pdf(file_bytes)
-    elif extension == ".pptx":
-        text = extract_pptx(file_bytes)
-    else:
-        raise ValueError(f"Unsupported file type: {extension}")
+    try:
+        if extension in {".txt", ".md"}:
+            text = extract_plain_text(file_bytes)
+        elif extension == ".docx":
+            text = extract_docx(file_bytes)
+        elif extension == ".pdf":
+            text = extract_pdf(file_bytes)
+        elif extension == ".pptx":
+            text = extract_pptx(file_bytes)
+        else:
+            raise ValueError(f"Unsupported file type: {extension}")
+    except ValueError:
+        raise
+    except Exception as exc:
+        raise ValueError(
+            f"{Path(filename).name} could not be read. It may be damaged or may not match its file extension."
+        ) from exc
 
     normalized = normalize_text(text)
     if not normalized:

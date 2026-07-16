@@ -11,19 +11,33 @@ function Write-Step([string]$Message) {
     Write-Host "`n==> $Message" -ForegroundColor Cyan
 }
 
+function Test-PythonCommand([string]$Executable, [string[]]$Arguments = @()) {
+    try {
+        & $Executable @Arguments -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" *> $null
+        return $LASTEXITCODE -eq 0
+    }
+    catch {
+        return $false
+    }
+}
+
 function Find-Python {
     $launcher = Get-Command py -ErrorAction SilentlyContinue
-    if ($launcher) {
+    if ($launcher -and (Test-PythonCommand $launcher.Source @("-3.12"))) {
         return @($launcher.Source, "-3.12")
     }
 
     $python = Get-Command python -ErrorAction SilentlyContinue
-    if ($python -and $python.Source -notlike "*WindowsApps*") {
+    if (
+        $python -and
+        $python.Source -notlike "*WindowsApps*" -and
+        (Test-PythonCommand $python.Source)
+    ) {
         return @($python.Source)
     }
 
     $candidate = "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe"
-    if (Test-Path $candidate) {
+    if ((Test-Path $candidate) -and (Test-PythonCommand $candidate)) {
         return @($candidate)
     }
     return $null
@@ -54,6 +68,9 @@ if (-not $pythonCommand) {
         throw "Python is required. Install Python 3.12 from https://www.python.org/downloads/ and run this setup again."
     }
     & $winget.Source install --id Python.Python.3.12 --exact --scope user --accept-package-agreements --accept-source-agreements
+    if ($LASTEXITCODE -ne 0) {
+        throw "Python installation did not complete. Check the winget message above, then run this setup again."
+    }
     $pythonCommand = Find-Python
     if (-not $pythonCommand) {
         throw "Python was installed but could not be found. Restart Windows, then run this setup again."
@@ -99,7 +116,13 @@ try {
     }
     & $pythonExecutable @pythonArguments -m venv (Join-Path $InstallDirectory ".venv")
     $venvPython = Join-Path $InstallDirectory ".venv\Scripts\python.exe"
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $venvPython)) {
+        throw "Promptly could not create its private Python environment."
+    }
     & $venvPython -m pip install --disable-pip-version-check -r (Join-Path $InstallDirectory "requirements.txt")
+    if ($LASTEXITCODE -ne 0) {
+        throw "Promptly's Python packages could not be installed. Check the internet connection, then run setup again."
+    }
 
     $ollama = Find-Ollama
     if (-not $ollama) {
