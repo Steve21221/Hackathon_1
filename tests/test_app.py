@@ -4,7 +4,7 @@ import unittest
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from app import app, build_feedback_prompt, call_model, load_mentor_prompt
 from docx import Document
@@ -604,8 +604,36 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertEqual(payload["model"], "qwen3.5:9b")
         self.assertTrue(payload["think"])
         self.assertFalse(payload["stream"])
+        self.assertEqual(payload["options"]["num_predict"], 4_096)
         self.assertIn("Dr. Nanshu Lu", payload["messages"][0]["content"])
         self.assertIn("A testable idea", payload["messages"][1]["content"])
+
+    @patch("app.requests.post")
+    def test_ollama_retries_without_thinking_when_final_answer_is_empty(self, mock_post):
+        os.environ["MODEL_PROVIDER"] = "ollama"
+        os.environ["OLLAMA_MODEL"] = "qwen3.5:9b"
+        thinking_only = Mock()
+        thinking_only.json.return_value = {
+            "message": {"content": "", "thinking": "reasoning used the output budget"}
+        }
+        final_answer = Mock()
+        final_answer.json.return_value = {
+            "message": {"content": "Recovered final feedback", "thinking": ""}
+        }
+        mock_post.side_effect = [thinking_only, final_answer]
+
+        result = call_model(
+            "Review category: Research ideas\nContent: A testable idea.",
+            mentor_id="dr-nanshu-lu",
+        )
+
+        self.assertEqual(result, "Recovered final feedback")
+        self.assertEqual(mock_post.call_count, 2)
+        first_payload = mock_post.call_args_list[0].kwargs["json"]
+        retry_payload = mock_post.call_args_list[1].kwargs["json"]
+        self.assertTrue(first_payload["think"])
+        self.assertFalse(retry_payload["think"])
+        self.assertEqual(retry_payload["options"]["num_predict"], 2_000)
 
     @patch("app.Anthropic")
     def test_claude_receives_mentor_profile_and_review(self, mock_anthropic):

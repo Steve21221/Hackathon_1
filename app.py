@@ -439,30 +439,40 @@ def call_ollama(instructions: str, prompt: str) -> str:
     """Generate local feedback with a thinking-capable model served by Ollama."""
     base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
     model = os.getenv("OLLAMA_MODEL", "qwen3.5:9b").strip() or "qwen3.5:9b"
-    response = requests.post(
-        f"{base_url}/api/chat",
-        json={
-            "model": model,
-            "messages": [
-                {"role": "system", "content": instructions},
-                {"role": "user", "content": prompt},
-            ],
-            "think": True,
-            "stream": False,
-            "options": {
-                "temperature": 0.2,
-                "num_ctx": 32_768,
-                "num_predict": 2_000,
+    messages = [
+        {"role": "system", "content": instructions},
+        {"role": "user", "content": prompt},
+    ]
+    attempts = ((True, 4_096), (False, 2_000))
+    for think, output_tokens in attempts:
+        response = requests.post(
+            f"{base_url}/api/chat",
+            json={
+                "model": model,
+                "messages": messages,
+                "think": think,
+                "stream": False,
+                "options": {
+                    "temperature": 0.2,
+                    "num_ctx": 32_768,
+                    "num_predict": output_tokens,
+                },
             },
-        },
-        timeout=600,
+            timeout=600,
+        )
+        response.raise_for_status()
+        data = response.json()
+        output = data.get("message", {}).get("content", "").strip()
+        if output:
+            return output
+        if think:
+            app.logger.warning(
+                "Ollama returned reasoning without a final answer; retrying without thinking output."
+            )
+
+    raise ValueError(
+        "Ollama could not produce a final response. Try a shorter file or a more focused request."
     )
-    response.raise_for_status()
-    data = response.json()
-    output = data.get("message", {}).get("content", "").strip()
-    if not output:
-        raise ValueError("Ollama returned an empty response.")
-    return output
 
 
 def call_openai(instructions: str, prompt: str) -> str:
