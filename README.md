@@ -68,6 +68,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Downloads\Promptly-Se
 
 The setup needs internet access to download the code, Python packages, Ollama, and the model. After installation, feedback generation runs locally without an API key or per-token fee.
 
+The published setup downloads the `main` branch. Contributors testing a pull-request branch before it is merged can pass its name explicitly, for example:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Downloads\Promptly-Setup.ps1" -RepositoryBranch "codex/separate-review-style"
+```
+
 ### Manual setup
 
 #### First-time setup

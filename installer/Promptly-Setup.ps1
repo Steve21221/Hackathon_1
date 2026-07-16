@@ -76,6 +76,21 @@ try {
     New-Item -ItemType Directory -Path $InstallDirectory -Force | Out-Null
     Copy-Item -Path (Join-Path $sourceDirectory.FullName "*") -Destination $InstallDirectory -Recurse -Force
 
+    $requiredPaths = @(
+        "app.py",
+        "run_promptly.py",
+        "requirements.txt",
+        "Mentor_Data",
+        "raw_materials",
+        "static",
+        "templates"
+    )
+    foreach ($requiredPath in $requiredPaths) {
+        if (-not (Test-Path (Join-Path $InstallDirectory $requiredPath))) {
+            throw "The downloaded Promptly package is missing $requiredPath. Please download a published release and run setup again."
+        }
+    }
+
     Write-Step "Creating Promptly's private Python environment"
     $pythonExecutable = $pythonCommand[0]
     $pythonArguments = @()
@@ -116,7 +131,7 @@ try {
         throw "The model download did not complete. Run this setup again when the internet connection is stable."
     }
 
-    @"
+    $environmentContents = @"
 MODEL_PROVIDER=ollama
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=$model
@@ -128,7 +143,15 @@ OPENAI_MODEL=gpt-5-mini
 # Optional paid Anthropic Claude alternative
 ANTHROPIC_API_KEY=
 CLAUDE_MODEL=claude-sonnet-4-5
-"@ | Set-Content -Path (Join-Path $InstallDirectory ".env") -Encoding UTF8
+"@
+    # Windows PowerShell 5.1's UTF8 encoding adds a byte-order mark. That mark
+    # becomes part of the first variable name when python-dotenv reads the file.
+    $utf8WithoutBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText(
+        (Join-Path $InstallDirectory ".env"),
+        $environmentContents,
+        $utf8WithoutBom
+    )
 
     $runCommandPath = Join-Path $InstallDirectory "Run-Promptly.cmd"
     @"
