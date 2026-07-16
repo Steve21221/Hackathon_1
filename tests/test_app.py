@@ -420,15 +420,57 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertTrue(unrelated_run.is_dir())
         self.assertNotIn(b"review.txt", deleted.data)
 
-    def test_builtin_mentor_cannot_be_deleted(self):
+    def test_builtin_mentor_can_be_deleted_and_restored(self):
+        created = self.client.post(
+            "/generate-prompts",
+            data={
+                "selected_prompt_mentor": "dr-nanshu-lu",
+                "paper_files": (
+                    BytesIO(b"State the hypothesis and compare against a strong baseline."),
+                    "local-paper.txt",
+                ),
+            },
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(created.status_code, 200)
+        run_directory = Path(app.config["OUTPUT_DIR"]) / created.headers["X-Prompt-Run-Id"]
+        library = Path(app.config["MENTOR_LIBRARY_DIR"]) / "dr-nanshu-lu"
+        self.assertTrue(run_directory.is_dir())
+        self.assertTrue(library.is_dir())
+
         response = self.client.post(
             "/delete-mentor",
             data={"selected_prompt_mentor": "dr-nanshu-lu"},
+            follow_redirects=True,
         )
 
-        self.assertEqual(response.status_code, 400)
-        self.assertIn(b"Built-in mentors cannot be deleted", response.data)
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b"Dr. Nanshu Lu", response.data)
+        self.assertFalse(library.exists())
+        self.assertFalse(run_directory.exists())
         self.assertTrue((Path("Mentor_Data") / "dr-nanshu-lu").is_dir())
+        removed_path = Path(app.config["MENTOR_LIBRARY_DIR"]) / ".removed-mentors.json"
+        self.assertEqual(json.loads(removed_path.read_text(encoding="utf-8")), ["dr-nanshu-lu"])
+        self.assertNotIn(b"Dr. Nanshu Lu", self.client.get("/").data)
+        self.assertEqual(self.client.get("/api/library/dr-nanshu-lu").status_code, 404)
+        with self.assertRaisesRegex(ValueError, "available mentor"):
+            load_mentor_prompt("dr-nanshu-lu", "papers-proposals")
+
+        restored = self.client.post(
+            "/generate-prompts",
+            data={
+                "prompt_mentor_name": "Dr. Nanshu Lu",
+                "research_files": (
+                    BytesIO(b"Ask what observation would falsify the central idea."),
+                    "restored.txt",
+                ),
+            },
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(restored.status_code, 200)
+        self.assertIn(b"Dr. Nanshu Lu", restored.data)
+        self.assertFalse(removed_path.exists())
+        self.assertIn(b"Dr. Nanshu Lu", self.client.get("/").data)
 
     def test_delete_prompt_library_rejects_unsafe_selection(self):
         response = self.client.post(

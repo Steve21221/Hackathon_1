@@ -390,15 +390,11 @@
       });
     }
 
-    function updateLibraryNote(name, isDeletable) {
+    function updateLibraryNote(name) {
       var note = document.querySelector('[data-prompt-library-note]');
       if (!note) return;
       if (name) {
-        if (isDeletable === false) {
-          note.innerHTML = '<strong data-active-library-name></strong> is built in and cannot be deleted. Local uploads update its matching review categories.';
-        } else {
-          note.innerHTML = 'Active library: <strong data-active-library-name></strong>. Uploads accumulate here and prompt TXT files update each time you generate.';
-        }
+        note.innerHTML = 'Active library: <strong data-active-library-name></strong>. Uploads accumulate here and prompt TXT files update each time you generate.';
         note.querySelector('[data-active-library-name]').textContent = name;
       } else {
         note.textContent = 'Create a named library or select an existing one. Its reference files and generated prompts stay together on this computer.';
@@ -618,7 +614,7 @@
           return;
         }
         updateStoredFileDisplays(form, result.data.stored_prompt_files || {});
-        updateLibraryNote(result.data.name || slug, result.data.deletable !== false);
+        updateLibraryNote(result.data.name || slug);
         renderPromptResults(result.data, { scroll: false });
         var feedbackCard = document.querySelector('[data-feedback-mentor-card][data-mentor-id="' + slug + '"]');
         if (feedbackCard) {
@@ -655,7 +651,7 @@
         var nameNode = card && card.querySelector('.mentor-copy strong');
         var mentorName = nameNode ? nameNode.textContent.trim() : (button && button.value) || 'this mentor';
         var confirmed = window.confirm(
-          'Delete ' + mentorName + '? This permanently removes its uploaded references, generated prompts, and associated run copies from this computer.'
+          'Delete ' + mentorName + '? This removes the mentor from both workspaces and permanently deletes its local uploads, generated prompts, and associated run copies from this computer.'
         );
         if (!confirmed) event.preventDefault();
       });

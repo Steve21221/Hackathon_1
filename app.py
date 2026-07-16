@@ -284,6 +284,7 @@ MENTORS = {
 }
 DEFAULT_MENTOR_ID = "dr-nanshu-lu"
 MENTOR_DATA_DIRECTORY = PROJECT_ROOT / "Mentor_Data"
+REMOVED_MENTORS_FILENAME = ".removed-mentors.json"
 CONTENT_TYPE_TO_MODE = {
     "research-ideas": "meeting_research_pi",
     "talks-slides": "slides_talk_pi",
@@ -302,8 +303,49 @@ Place individual critical questions as bullets under a dedicated `## Critical qu
 """
 
 
+def removed_mentors_path() -> Path:
+    return Path(app.config["MENTOR_LIBRARY_DIR"]) / REMOVED_MENTORS_FILENAME
+
+
+def read_removed_mentor_ids() -> set[str]:
+    """Return built-in mentor IDs that this installation has locally hidden."""
+    path = removed_mentors_path()
+    if not path.is_file():
+        return set()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return set()
+    if not isinstance(data, list):
+        return set()
+    return {str(value) for value in data if str(value) in MENTORS}
+
+
+def write_removed_mentor_ids(mentor_ids: set[str]) -> None:
+    """Persist removals outside bundled Mentor_Data so app updates do not restore them."""
+    path = removed_mentors_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    filtered_ids = sorted(mentor_id for mentor_id in mentor_ids if mentor_id in MENTORS)
+    if not filtered_ids:
+        path.unlink(missing_ok=True)
+        return
+    temporary_path = path.with_suffix(path.suffix + ".tmp")
+    temporary_path.write_text(json.dumps(filtered_ids, indent=2), encoding="utf-8")
+    temporary_path.replace(path)
+
+
+def restore_removed_builtin_mentor(slug: str) -> None:
+    """Re-enable a removed built-in when the user explicitly creates it again."""
+    removed_ids = read_removed_mentor_ids()
+    if slug not in removed_ids:
+        return
+    removed_ids.remove(slug)
+    write_removed_mentor_ids(removed_ids)
+
+
 def list_feedback_mentors() -> dict[str, dict[str, str]]:
     """Return static Mentor_Data mentors plus locally created PI-style libraries."""
+    removed_ids = read_removed_mentor_ids()
     mentors: dict[str, dict[str, str]] = {
         mentor_id: {
             "name": mentor["name"],
@@ -314,9 +356,12 @@ def list_feedback_mentors() -> dict[str, dict[str, str]]:
             "prompt_files": dict(mentor["prompt_files"]),
         }
         for mentor_id, mentor in MENTORS.items()
+        if mentor_id not in removed_ids
     }
     for library in list_prompt_mentors():
         slug = library["slug"]
+        if slug in removed_ids:
+            continue
         if slug in mentors:
             ready_labels = [
                 str(MODE_DEFINITIONS[mode]["label"])
@@ -913,7 +958,7 @@ def build_feedback_prompt(
 ) -> str:
     label = UPLOAD_TYPES[kind]["label"]
     mentors = list_feedback_mentors()
-    mentor = mentors.get(mentor_id) or MENTORS.get(mentor_id)
+    mentor = mentors.get(mentor_id)
     if not mentor:
         raise ValueError("Please choose an available mentor.")
     mentor_name = mentor["name"]
@@ -955,6 +1000,7 @@ def mode_dir_for_mentor(slug: str, mode: str) -> Path:
 def ensure_prompt_mentor(name: str) -> dict[str, str]:
     display_name = name.strip() or "PI Style Library"
     slug = mentor_slug(display_name)
+    restore_removed_builtin_mentor(slug)
     directory = mentor_dir(slug)
     directory.mkdir(parents=True, exist_ok=True)
     for mode in MODE_DEFINITIONS:
@@ -992,6 +1038,7 @@ def prompt_mentor_initials(name: str) -> str:
 
 
 def list_prompt_mentors() -> list[dict[str, Any]]:
+    removed_ids = read_removed_mentor_ids()
     mentors_by_slug: dict[str, dict[str, Any]] = {
         mentor_id: {
             "slug": mentor_id,
@@ -999,12 +1046,13 @@ def list_prompt_mentors() -> list[dict[str, Any]]:
             "initials": mentor["initials"],
             "status": "Built-in mentor",
             "description": (
-                "Version-controlled starting prompts; local updates override matching categories."
+                "Bundled starting prompts; local updates override matching categories."
             ),
             "source": "static",
-            "deletable": False,
+            "deletable": True,
         }
         for mentor_id, mentor in MENTORS.items()
+        if mentor_id not in removed_ids
     }
     root = get_mentor_library_dir()
     if root.exists():
@@ -1015,6 +1063,8 @@ def list_prompt_mentors() -> list[dict[str, Any]]:
             if not mentor:
                 continue
             slug = mentor["slug"]
+            if slug in removed_ids:
+                continue
             is_builtin = slug in MENTORS
             mentor["initials"] = prompt_mentor_initials(mentor["name"])
             mentor["status"] = "Built-in + local updates" if is_builtin else "PI-style library"
@@ -1024,7 +1074,7 @@ def list_prompt_mentors() -> list[dict[str, Any]]:
                 else "Stored reference files and generated prompts for this mentor."
             )
             mentor["source"] = "hybrid" if is_builtin else "library"
-            mentor["deletable"] = not is_builtin
+            mentor["deletable"] = True
             mentors_by_slug[slug] = mentor
     return sorted(
         mentors_by_slug.values(),
@@ -1050,7 +1100,7 @@ def resolve_prompt_mentor(selected_slug: str = "", new_name: str = "") -> dict[s
         if existing:
             return existing
         builtin = MENTORS.get(selected_slug.strip().lower())
-        if builtin:
+        if builtin and selected_slug.strip().lower() not in read_removed_mentor_ids():
             return ensure_prompt_mentor(str(builtin["name"]))
         raise ValueError("Please select an existing mentor or create a new one.")
     return ensure_prompt_mentor("PI Style Library")
@@ -1164,7 +1214,19 @@ def delete_prompt_mentor(slug: str) -> int:
     if safe_slug != slug.strip().lower():
         raise ValueError("Please select an existing mentor to delete.")
     if safe_slug in MENTORS:
-        raise ValueError("Built-in mentors cannot be deleted.")
+        if safe_slug in read_removed_mentor_ids():
+            raise ValueError("Please select an existing mentor to delete.")
+        directory = mentor_dir(safe_slug).resolve()
+        root = get_mentor_library_dir().resolve()
+        if directory.exists():
+            if root not in directory.parents:
+                raise ValueError("Please select an existing mentor to delete.")
+            shutil.rmtree(directory)
+        deleted_runs = delete_prompt_runs_for_mentor(safe_slug)
+        removed_ids = read_removed_mentor_ids()
+        removed_ids.add(safe_slug)
+        write_removed_mentor_ids(removed_ids)
+        return deleted_runs
     directory = mentor_dir(safe_slug).resolve()
     root = get_mentor_library_dir().resolve()
     if root not in directory.parents:
