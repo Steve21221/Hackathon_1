@@ -44,7 +44,7 @@ Dr. Lu's version-controlled starting profile contains three category-specific fi
 
 Built-in mentors also appear in **Modify a review style**. When local reference files are uploaded for a built-in mentor, Promptly saves the learned prompt under `mentor_files/<mentor-slug>/` and uses it in the feedback workspace for that matching category. Categories without a local update continue using the version-controlled `Mentor_Data` starting prompt. Locally created mentor libraries use the same registry and automatically appear in the feedback workspace after a prompt is generated.
 
-User-created mentors can be deleted from **Modify a review style** after selecting their card. Promptly asks for confirmation, then removes that mentor's stored reference files, generated prompts, metadata, and associated downloadable run copies. Built-in mentors are protected and cannot be deleted.
+Any mentor can be deleted from **Modify a review style** after selecting their card. Promptly asks for confirmation, removes the mentor from both workspaces, and deletes its stored reference files, locally generated prompts, metadata, and associated downloadable run copies. For a bundled mentor, Promptly retains the version-controlled starting files but records the removal locally so the mentor stays hidden after normal app updates. Creating a new library with the same mentor name restores that bundled starting profile.
 
 ## Contributors
 

@@ -51,15 +51,11 @@
               value="{{ selected_prompt_mentor }}"
               formnovalidate
               data-delete-mentor-button
-              {% if not selected_prompt_mentor or not selected_prompt_mentor_profile.deletable %}hidden{% endif %}
+              {% if not selected_prompt_mentor %}hidden{% endif %}
             >Delete mentor</button>
             <p class="mentor-library-note" data-prompt-library-note>
               {% if selected_prompt_mentor_profile %}
-                {% if selected_prompt_mentor_profile.deletable %}
-                  Active library: <strong data-active-library-name>{{ selected_prompt_mentor_profile.name }}</strong>. Uploads accumulate here and prompt TXT files update each time you generate.
-                {% else %}
-                  <strong data-active-library-name>{{ selected_prompt_mentor_profile.name }}</strong> is built in and cannot be deleted. Local uploads update its matching review categories.
-                {% endif %}
+                Active library: <strong data-active-library-name>{{ selected_prompt_mentor_profile.name }}</strong>. Uploads accumulate here and prompt TXT files update each time you generate.
               {% else %}
                 Create a named library or select an existing one. Its reference files and generated prompts stay together on this computer.
               {% endif %}
