@@ -82,12 +82,31 @@ SECRET_SETTINGS_KEYS = {"OPENAI_API_KEY", "ANTHROPIC_API_KEY"}
 app.config["OUTPUT_DIR"] = PROJECT_ROOT / "outputs"
 app.config["MENTOR_LIBRARY_DIR"] = PROJECT_ROOT / "mentor_files"
 OLLAMA_MODEL_OPTIONS = (
-    ("qwen3.5:4b", "Qwen 3.5 4B — best scientific critique"),
-    ("phi4-mini", "Phi-4 Mini — faster responses"),
-    ("qwen3.5:9b", "Qwen 3.5 9B — larger quality model"),
-    ("qwen3.5:27b", "Qwen 3.5 27B — high-memory systems"),
+    (
+        "qwen3.5:4b",
+        "Qwen 3.5 4B — balanced scientific critique",
+        "Choose for stronger scientific critique on most laptops. It is slower than Phi-4 Mini, but usually gives more detailed research feedback.",
+    ),
+    (
+        "phi4-mini",
+        "Phi-4 Mini — fastest responses",
+        "Choose when response speed matters most. It uses less memory, but its scientific critique may be shorter and less rigorous than Qwen.",
+    ),
+    (
+        "qwen3.5:9b",
+        "Qwen 3.5 9B — deeper scientific critique",
+        "Choose for deeper, more nuanced scientific feedback on a computer with about 32 GB RAM. It is slower and heavier than Qwen 4B.",
+    ),
+    (
+        "qwen3.5:27b",
+        "Qwen 3.5 27B — maximum local depth",
+        "Choose for the most detailed local critique on a high-memory workstation. This is the slowest option and about 64 GB RAM is recommended.",
+    ),
 )
-OLLAMA_MODEL_VALUES = {value for value, _label in OLLAMA_MODEL_OPTIONS}
+OLLAMA_MODEL_VALUES = {value for value, _label, _description in OLLAMA_MODEL_OPTIONS}
+OLLAMA_MODEL_DESCRIPTIONS = {
+    value: description for value, _label, description in OLLAMA_MODEL_OPTIONS
+}
 
 
 def default_settings() -> dict[str, str]:
@@ -1715,6 +1734,7 @@ def prompt_library_context(
         "model_settings": public_settings(),
         "ollama_model_options": OLLAMA_MODEL_OPTIONS,
         "ollama_model_values": OLLAMA_MODEL_VALUES,
+        "ollama_model_descriptions": OLLAMA_MODEL_DESCRIPTIONS,
         "prompt_cards": persisted["prompt_cards"],
         "prompt_output_location": persisted["prompt_output_location"],
         "prompt_run_location": persisted["prompt_run_location"],

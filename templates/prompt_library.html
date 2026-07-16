@@ -70,11 +70,12 @@
         <label class="form-label">Ollama base URL<input type="text" name="OLLAMA_BASE_URL" value="{{ model_settings.OLLAMA_BASE_URL }}" placeholder="http://127.0.0.1:11434"></label>
         <label class="form-label">Local model
           <select name="OLLAMA_MODEL" data-ollama-model>
-            {% for value, label in ollama_model_options %}<option value="{{ value }}" {% if model_settings.OLLAMA_MODEL == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
-            {% if model_settings.OLLAMA_MODEL not in ollama_model_values %}<option value="{{ model_settings.OLLAMA_MODEL }}" selected>{{ model_settings.OLLAMA_MODEL }} — custom installed model</option>{% endif %}
+            {% for value, label, description in ollama_model_options %}<option value="{{ value }}" data-model-description="{{ description }}" {% if model_settings.OLLAMA_MODEL == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+            {% if model_settings.OLLAMA_MODEL not in ollama_model_values %}<option value="{{ model_settings.OLLAMA_MODEL }}" data-model-description="Choose this custom model only if it is already downloaded in Ollama." selected>{{ model_settings.OLLAMA_MODEL }} — custom installed model</option>{% endif %}
           </select>
         </label>
-        <p class="settings-model-note">Choose only a model already downloaded in Ollama. The installer can deploy both recommended models for easy switching.</p>
+        <p class="settings-model-note" data-model-description-output>{{ ollama_model_descriptions.get(model_settings.OLLAMA_MODEL, 'Choose this custom model only if it is already downloaded in Ollama.') }}</p>
+        <p class="settings-model-note">Only choose a model already downloaded in Ollama. The installer can deploy Qwen 4B and Phi-4 Mini together for easy switching.</p>
       </div>
 
       <div class="settings-group" data-settings-group="openai">

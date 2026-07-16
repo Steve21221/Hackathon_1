@@ -246,6 +246,14 @@
     });
   }
 
+  function syncModelDescription(form) {
+    var select = form && form.querySelector('[data-ollama-model]');
+    var description = form && form.querySelector('[data-model-description-output]');
+    if (!select || !description) return;
+    var option = select.options[select.selectedIndex];
+    description.textContent = (option && option.getAttribute('data-model-description')) || '';
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('.reference-choice input[type="file"][multiple]').forEach(function (input) {
       input._promptlyPendingFiles = Array.from(input.files || []);
@@ -839,9 +847,14 @@
 
     if (settingsForm) {
       syncSettingsGroups(settingsForm);
+      syncModelDescription(settingsForm);
       var providerSelect = settingsForm.querySelector('[data-settings-provider]');
       if (providerSelect) {
         providerSelect.addEventListener('change', function () { syncSettingsGroups(settingsForm); });
+      }
+      var ollamaModelSelect = settingsForm.querySelector('[data-ollama-model]');
+      if (ollamaModelSelect) {
+        ollamaModelSelect.addEventListener('change', function () { syncModelDescription(settingsForm); });
       }
       settingsForm.addEventListener('submit', function (event) {
         var submitter = event.submitter;

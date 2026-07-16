@@ -624,8 +624,13 @@ class PromptlyTestCase(unittest.TestCase):
                 self.assertIn(b'<select name="OLLAMA_MODEL" data-ollama-model>', response.data)
                 self.assertIn(b'value="qwen3.5:4b"', response.data)
                 self.assertIn(b'value="phi4-mini"', response.data)
-                self.assertIn(b"best scientific critique", response.data)
-                self.assertIn(b"faster responses", response.data)
+                self.assertIn(b"balanced scientific critique", response.data)
+                self.assertIn(b"fastest responses", response.data)
+                self.assertIn(b"response speed matters most", response.data)
+                self.assertIn(b"scientific critique may be shorter and less rigorous", response.data)
+                self.assertIn(b"most detailed local critique", response.data)
+                self.assertIn(b"data-model-description", response.data)
+                self.assertIn(b"data-model-description-output", response.data)
 
     def test_settings_api_can_switch_to_phi4_mini(self):
         response = self.client.post(
@@ -645,7 +650,7 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertEqual(response.get_json()["settings"]["OLLAMA_MODEL"], "phi4-mini")
         self.assertEqual(self.client.get("/api/settings").get_json()["OLLAMA_MODEL"], "phi4-mini")
         home = self.client.get("/")
-        self.assertIn(b'<option value="phi4-mini" selected>', home.data)
+        self.assertRegex(home.data, rb'<option value="phi4-mini"[^>]* selected>')
 
     def test_installer_can_download_phi_or_both_recommended_models(self):
         installer = (Path("installer") / "Promptly-Setup.ps1").read_text(encoding="utf-8")
