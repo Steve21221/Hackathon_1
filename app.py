@@ -270,8 +270,12 @@ MENTORS = {
         "name": "Dr. Nanshu Lu",
         "initials": "NL",
         "status": "Available mentor",
-        "description": "Available for research and engineering feedback.",
-        "prompt_file": "dr-nanshu-lu.txt",
+        "description": "Built-in starting profile for research and engineering feedback.",
+        "prompt_files": {
+            "meeting_research_pi": "dr-nanshu-lu/meeting_research_pi.txt",
+            "paper_proposal_pi": "dr-nanshu-lu/paper_proposal_pi.txt",
+            "slides_talk_pi": "dr-nanshu-lu/slides_talk_pi.txt",
+        },
     }
 }
 DEFAULT_MENTOR_ID = "dr-nanshu-lu"
@@ -301,7 +305,7 @@ def list_feedback_mentors() -> dict[str, dict[str, str]]:
             "status": mentor["status"],
             "description": mentor["description"],
             "source": "static",
-            "prompt_file": mentor["prompt_file"],
+            "prompt_files": dict(mentor["prompt_files"]),
         }
         for mentor_id, mentor in MENTORS.items()
     }
@@ -380,7 +384,14 @@ def load_mentor_prompt(mentor_id: str, content_type: str | None = None) -> str:
             )
         return prompt
 
-    prompt_path = MENTOR_DATA_DIRECTORY / mentor["prompt_file"]
+    requested_value = (content_type or "").strip().lower()
+    requested_mode = CONTENT_TYPE_TO_MODE.get(requested_value, requested_value)
+    prompt_files = mentor.get("prompt_files", {})
+    selected_mode = requested_mode if requested_mode in prompt_files else "meeting_research_pi"
+    prompt_file = prompt_files.get(selected_mode)
+    if not prompt_file:
+        raise ValueError(f"The prompt profile for {mentor['name']} is unavailable.")
+    prompt_path = MENTOR_DATA_DIRECTORY / prompt_file
     try:
         prompt = prompt_path.read_text(encoding="utf-8").strip()
     except OSError as exc:
@@ -1057,11 +1068,7 @@ def render_home(**context: Any):
     defaults.update(prompt_library_context(default_clean_endpoint="home", **context))
     defaults.update(context)
     mentors = list_feedback_mentors()
-    feedback_mentors = {
-        mentor_id: mentor
-        for mentor_id, mentor in mentors.items()
-        if mentor.get("source") == "library"
-    }
+    feedback_mentors = mentors
     selected_mentor = resolve_feedback_mentor_id(
         str(defaults.get("selected_mentor", "")),
         str(defaults.get("selected_prompt_mentor", "")),
@@ -1112,7 +1119,7 @@ def home():
 
 @app.get("/prompt-library")
 def prompt_library():
-    return redirect(url_for("home"))
+    return render_prompt_library()
 
 
 @app.post("/generate-prompts")
@@ -1120,7 +1127,7 @@ def generate_prompts():
     def fail(message: str, status: int = 400, **context: Any):
         if wants_json():
             return jsonify({"error": message, **context}), status
-        return render_home(error=message, **context), status
+        return render_prompt_library(error=message, **context), status
 
     try:
         prompt_mentor = resolve_prompt_mentor(
@@ -1221,7 +1228,7 @@ def generate_prompts():
         return response
 
     response = Response(
-        render_home(
+        render_prompt_library(
             prompt_cards=prompt_cards,
             prompt_output_location=str(mentor_output_directory),
             prompt_run_location=str(get_output_dir() / run_id),
@@ -1232,7 +1239,7 @@ def generate_prompts():
             selected_mentor=prompt_mentor["slug"],
             stored_prompt_files=stored_files_for_mentor(prompt_mentor["slug"]),
             prompt_clean_url=url_for(
-                "home",
+                "prompt_library",
                 prompt_mentor=prompt_mentor["slug"],
                 mentor=prompt_mentor["slug"],
             ),
@@ -1246,16 +1253,13 @@ def generate_prompts():
 @app.post("/delete-mentor")
 def delete_mentor():
     selected_slug = request.form.get("selected_prompt_mentor", "").strip().lower()
-    return_home = "prompt-library" not in (request.referrer or "")
-    render_error = render_home if return_home else render_prompt_library
-    redirect_endpoint = "home" if return_home else "prompt_library"
     if not selected_slug:
-        return render_error(error="Please select a mentor to delete."), 400
+        return render_prompt_library(error="Please select a mentor to delete."), 400
     try:
         delete_prompt_mentor(selected_slug)
     except ValueError as exc:
-        return render_error(error=str(exc)), 400
-    return redirect(url_for(redirect_endpoint))
+        return render_prompt_library(error=str(exc)), 400
+    return redirect(url_for("prompt_library"))
 
 
 @app.post("/delete-reference-file")
@@ -1266,8 +1270,8 @@ def delete_reference_file():
         mode, filename = selection.split("|", 1)
         delete_stored_reference_file(selected_slug, mode, filename)
     except (ValueError, OSError):
-        return render_home(error=DELETE_REFERENCE_FILE_ERROR), 400
-    return redirect(url_for("home", prompt_mentor=mentor_slug(selected_slug)))
+        return render_prompt_library(error=DELETE_REFERENCE_FILE_ERROR), 400
+    return redirect(url_for("prompt_library", prompt_mentor=mentor_slug(selected_slug)))
 
 
 @app.get("/download/<run_id>/<kind>")

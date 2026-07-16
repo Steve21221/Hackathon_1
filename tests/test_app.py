@@ -44,34 +44,47 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertIn(b'data-choose-prompt', response.data)
         self.assertIn(b'data-upload-panel="research-ideas"', response.data)
 
-    def test_home_page_embeds_pi_style_library_workflow(self):
+    def test_review_style_workspace_is_separate_from_home_page(self):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
-        self.assertNotIn(b"<h1>Build your PI-style", response.data)
-        self.assertNotIn(b'href="/prompt-library"', response.data)
-        self.assertNotIn(b"Build prompt library", response.data)
-        self.assertIn(b"Choose your mentor", response.data)
-        self.assertIn(b'name="research_files"', response.data)
-        self.assertIn(b'name="slide_files"', response.data)
-        self.assertIn(b'name="paper_files"', response.data)
-        self.assertIn(b"Generate reusable prompts", response.data)
+        self.assertIn(b'href="/prompt-library"', response.data)
+        self.assertIn(b"Modify a review style", response.data)
+        self.assertLess(
+            response.data.index(b"Modify a review style"),
+            response.data.index(b"Model settings"),
+        )
+        self.assertIn(b"What kind of feedback do you need?", response.data)
+        self.assertNotIn(b'name="research_files"', response.data)
+        self.assertNotIn(b"Generate reusable prompts", response.data)
         self.assertIn(b"library_uploads.js", response.data)
         self.assertNotIn(b"Mentor data", response.data)
 
         library_response = self.client.get("/prompt-library")
-        self.assertEqual(library_response.status_code, 302)
-        self.assertEqual(library_response.headers["Location"], "/")
+        self.assertEqual(library_response.status_code, 200)
+        self.assertIn(b"Modify a review style", library_response.data)
+        self.assertIn(b'name="research_files"', library_response.data)
+        self.assertIn(b'name="slide_files"', library_response.data)
+        self.assertIn(b'name="paper_files"', library_response.data)
+        self.assertIn(b"Generate reusable prompts", library_response.data)
+        self.assertIn(b"Feedback workspace", library_response.data)
+        self.assertLess(
+            library_response.data.index(b"Feedback workspace"),
+            library_response.data.index(b"Model settings"),
+        )
+        self.assertNotIn(b"What kind of feedback do you need?", library_response.data)
 
         self.assertEqual(self.client.get("/mentor-data").status_code, 404)
 
-    def test_home_page_hides_static_available_mentor_card(self):
+    def test_home_page_shows_static_starting_mentor_card(self):
         response = self.client.get("/?type=research-ideas")
         self.assertEqual(response.status_code, 200)
-        self.assertNotIn(b"Dr. Nanshu Lu", response.data)
-        self.assertNotIn(b"Available mentor", response.data)
-        self.assertIn(b"Create a PI-style library above", response.data)
+        self.assertIn(b"Dr. Nanshu Lu", response.data)
+        self.assertIn(b"Available mentor", response.data)
+        self.assertIn(b"Built-in starting profile", response.data)
+        self.assertNotIn(b"No mentor libraries yet", response.data)
+        self.assertIn(b"Modify a review style", response.data)
 
-    def test_prompt_generation_returns_home_page_with_ready_prompts(self):
+    def test_prompt_generation_returns_review_style_page_with_ready_prompts(self):
         response = self.client.post(
             "/generate-prompts",
             data={
@@ -87,10 +100,10 @@ class PromptlyTestCase(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Promptly &mdash; Feedback workspace", response.data)
+        self.assertIn(b"Promptly &mdash; PI-style prompt library", response.data)
         self.assertIn(b"PI-style prompts ready", response.data)
         self.assertIn(b"Download TXT", response.data)
-        self.assertIn(b"What kind of feedback do you need?", response.data)
+        self.assertNotIn(b"What kind of feedback do you need?", response.data)
 
     def test_pi_style_library_generates_and_downloads_prompt(self):
         response = self.client.post(
@@ -157,7 +170,7 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn(b"not supported", response.data)
 
-    def test_existing_prompt_libraries_use_mentor_card_selector_on_home(self):
+    def test_existing_prompt_libraries_use_mentor_card_selector_on_review_style_page(self):
         self.client.post(
             "/generate-prompts",
             data={
@@ -167,7 +180,7 @@ class PromptlyTestCase(unittest.TestCase):
             content_type="multipart/form-data",
         )
 
-        response = self.client.get("/?prompt_mentor=card-mentor")
+        response = self.client.get("/prompt-library?prompt_mentor=card-mentor")
 
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"Choose your mentor", response.data)
@@ -249,7 +262,7 @@ class PromptlyTestCase(unittest.TestCase):
         stored_file = Path(app.config["MENTOR_LIBRARY_DIR"]) / "file-delete-mentor" / "paper_proposal_pi" / "raw" / "delete-me.txt"
         self.assertTrue(stored_file.is_file())
 
-        selected = self.client.get("/?prompt_mentor=file-delete-mentor")
+        selected = self.client.get("/prompt-library?prompt_mentor=file-delete-mentor")
         self.assertEqual(selected.status_code, 200)
         self.assertIn(b"delete-me.txt", selected.data)
         self.assertIn(b'name="delete_reference_file" value="paper_proposal_pi|delete-me.txt"', selected.data)
@@ -311,7 +324,7 @@ class PromptlyTestCase(unittest.TestCase):
         )
         library = Path(app.config["MENTOR_LIBRARY_DIR"]) / "delete-mentor"
 
-        selected = self.client.get("/?prompt_mentor=delete-mentor")
+        selected = self.client.get("/prompt-library?prompt_mentor=delete-mentor")
         self.assertEqual(selected.status_code, 200)
         self.assertIn(b"Delete Mentor", selected.data)
         self.assertIn(b"Delete library", selected.data)
@@ -508,9 +521,15 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertIn("specialty, thinking process, and feedback style", prompt)
         self.assertIn("strength of the argument", prompt)
 
-    def test_mentor_style_prompt_is_available(self):
-        prompt = load_mentor_prompt("dr-nanshu-lu")
-        self.assertIn("research mentor", prompt)
+    def test_mentor_style_prompts_are_available_for_all_three_modes(self):
+        research_prompt = load_mentor_prompt("dr-nanshu-lu", "research-ideas")
+        paper_prompt = load_mentor_prompt("dr-nanshu-lu", "papers-proposals")
+        slides_prompt = load_mentor_prompt("dr-nanshu-lu", "talks-slides")
+        self.assertIn("falsifiable", research_prompt)
+        self.assertIn("central claim", paper_prompt)
+        self.assertIn("central story", slides_prompt)
+        self.assertNotEqual(research_prompt, paper_prompt)
+        self.assertNotEqual(paper_prompt, slides_prompt)
 
     @patch("app.OpenAI")
     def test_openai_receives_mentor_profile_and_review(self, mock_openai):
@@ -529,7 +548,7 @@ class PromptlyTestCase(unittest.TestCase):
         request = mock_openai.return_value.responses.create.call_args.kwargs
         self.assertEqual(request["model"], "gpt-5-mini")
         self.assertIn("Dr. Nanshu Lu", request["instructions"])
-        self.assertIn("rigorous, supportive", request["instructions"])
+        self.assertIn("rigorous senior research mentor", request["instructions"])
         self.assertIn("A testable idea", request["input"])
         self.assertFalse(request["store"])
 
@@ -574,7 +593,7 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertEqual(request["model"], "claude-sonnet-4-5")
         self.assertEqual(request["max_tokens"], 2_000)
         self.assertIn("Dr. Nanshu Lu", request["system"])
-        self.assertIn("rigorous, supportive", request["system"])
+        self.assertIn("rigorous senior research mentor", request["system"])
         self.assertEqual(request["messages"][0]["role"], "user")
         self.assertIn("A testable idea", request["messages"][0]["content"])
 
