@@ -275,6 +275,7 @@
       label.setAttribute('role', 'radio');
       label.setAttribute('aria-checked', 'true');
       label.setAttribute('data-prompt-mentor-card', '');
+      label.setAttribute('data-mentor-deletable', meta && meta.deletable === false ? 'false' : 'true');
 
       radio = document.createElement('input');
       radio.className = 'visually-hidden-file';
@@ -346,7 +347,10 @@
       var button = form.querySelector('[data-delete-mentor-button]');
       if (button) {
         var selectedMentor = selectedMentorValue(form);
-        button.hidden = !selectedMentor;
+        var checked = form.querySelector('input[name="selected_prompt_mentor"]:checked');
+        var selectedCard = checked && checked.closest('[data-prompt-mentor-card]');
+        var isDeletable = selectedCard && selectedCard.getAttribute('data-mentor-deletable') !== 'false';
+        button.hidden = !selectedMentor || !isDeletable;
         button.value = selectedMentor;
       }
     }

@@ -17,7 +17,7 @@
           </div>
           <div class="mentor-grid prompt-mentor-grid" role="radiogroup" aria-label="PI-style prompt libraries" data-prompt-mentor-cards data-mentor-home-url="{{ prompt_library_base_url }}">
             {% for mentor in prompt_mentors %}
-              <label class="mentor-card{% if mentor.slug == selected_prompt_mentor %} selected{% endif %}" role="radio" aria-checked="{% if mentor.slug == selected_prompt_mentor %}true{% else %}false{% endif %}" data-prompt-mentor-card>
+              <label class="mentor-card{% if mentor.slug == selected_prompt_mentor %} selected{% endif %}" role="radio" aria-checked="{% if mentor.slug == selected_prompt_mentor %}true{% else %}false{% endif %}" data-prompt-mentor-card data-mentor-deletable="{{ 'true' if mentor.deletable else 'false' }}">
                 <input class="visually-hidden-file" type="radio" name="selected_prompt_mentor" value="{{ mentor.slug }}" {% if mentor.slug == selected_prompt_mentor %}checked{% endif %}>
                 <span class="mentor-avatar" aria-hidden="true">{{ mentor.initials }}</span>
                 <span class="mentor-copy">
@@ -51,7 +51,7 @@
               value="{{ selected_prompt_mentor }}"
               formnovalidate
               data-delete-mentor-button
-              {% if not selected_prompt_mentor %}hidden{% endif %}
+              {% if not selected_prompt_mentor or not selected_prompt_mentor_profile.deletable %}hidden{% endif %}
             >Delete library</button>
             <p class="mentor-library-note" data-prompt-library-note>
               {% if selected_prompt_mentor_profile %}
