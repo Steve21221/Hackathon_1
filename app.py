@@ -561,20 +561,54 @@ def normalize_inline_math(text: str) -> str:
     return normalized
 
 
+def split_numbered_feedback_line(line: str) -> str | None:
+    """Return text after a leading numbered-list marker without regex backtracking."""
+    stripped = line.lstrip()
+    digit_end = 0
+    while digit_end < len(stripped) and stripped[digit_end].isdigit():
+        digit_end += 1
+
+    if digit_end == 0 or digit_end >= len(stripped) or stripped[digit_end] not in ".)":
+        return None
+
+    content_start = digit_end + 1
+    if content_start >= len(stripped) or not stripped[content_start].isspace():
+        return None
+    while content_start < len(stripped) and stripped[content_start].isspace():
+        content_start += 1
+    return stripped[content_start:]
+
+
+def feedback_section_key(line: str) -> str:
+    """Extract a known feedback heading using deterministic string operations."""
+    candidate = line.strip()
+    heading_marks = 0
+    while heading_marks < len(candidate) and heading_marks < 6 and candidate[heading_marks] == "#":
+        heading_marks += 1
+    if heading_marks:
+        if heading_marks < len(candidate) and not candidate[heading_marks].isspace():
+            return ""
+        candidate = candidate[heading_marks:].strip()
+
+    numbered_content = split_numbered_feedback_line(candidate)
+    if numbered_content is not None:
+        candidate = numbered_content.strip()
+
+    if candidate.endswith(":"):
+        candidate = candidate[:-1].rstrip()
+    key = candidate.casefold()
+    return key if key in FEEDBACK_SECTION_TITLES else ""
+
+
 def normalize_feedback_markdown(text: str) -> str:
     """Repair common LLM numbering and section-formatting mistakes before Markdown rendering."""
     lines = normalize_inline_math(text).splitlines()
     output: list[str] = []
     active_section = ""
     local_item_number = 0
-    section_pattern = re.compile(
-        r"^\s*(?:#{1,6}\s*)?(?:\d+[.)]\s*)?([^:]+?)\s*:?[ \t]*$"
-    )
-    numbered_item_pattern = re.compile(r"^\s*\d+[.)]\s+(.+)$")
 
     for line in lines:
-        section_match = section_pattern.match(line)
-        section_key = section_match.group(1).strip().lower() if section_match else ""
+        section_key = feedback_section_key(line)
         if section_key in FEEDBACK_SECTION_TITLES:
             active_section = section_key
             local_item_number = 0
@@ -584,9 +618,9 @@ def normalize_feedback_markdown(text: str) -> str:
             output.append("")
             continue
 
-        item_match = numbered_item_pattern.match(line)
-        if item_match and active_section:
-            item_text = item_match.group(1).strip()
+        item_text = split_numbered_feedback_line(line)
+        if item_text is not None and active_section:
+            item_text = item_text.strip()
             if active_section == "critical questions":
                 output.append(f"- {item_text}")
             else:
@@ -598,7 +632,7 @@ def normalize_feedback_markdown(text: str) -> str:
         # item in an unnecessary paragraph. Keep the repaired lists compact.
         if not line.strip() and active_section and output:
             previous = output[-1].lstrip()
-            if previous.startswith("- ") or re.match(r"^\d+\.\s", previous):
+            if previous.startswith("- ") or split_numbered_feedback_line(previous) is not None:
                 continue
         output.append(line)
 
