@@ -390,11 +390,15 @@
       });
     }
 
-    function updateLibraryNote(name) {
+    function updateLibraryNote(name, isDeletable) {
       var note = document.querySelector('[data-prompt-library-note]');
       if (!note) return;
       if (name) {
-        note.innerHTML = 'Active library: <strong data-active-library-name></strong>. Uploads accumulate here and prompt TXT files update each time you generate.';
+        if (isDeletable === false) {
+          note.innerHTML = '<strong data-active-library-name></strong> is built in and cannot be deleted. Local uploads update its matching review categories.';
+        } else {
+          note.innerHTML = 'Active library: <strong data-active-library-name></strong>. Uploads accumulate here and prompt TXT files update each time you generate.';
+        }
         note.querySelector('[data-active-library-name]').textContent = name;
       } else {
         note.textContent = 'Create a named library or select an existing one. Its reference files and generated prompts stay together on this computer.';
@@ -614,7 +618,7 @@
           return;
         }
         updateStoredFileDisplays(form, result.data.stored_prompt_files || {});
-        updateLibraryNote(result.data.name || slug);
+        updateLibraryNote(result.data.name || slug, result.data.deletable !== false);
         renderPromptResults(result.data, { scroll: false });
         var feedbackCard = document.querySelector('[data-feedback-mentor-card][data-mentor-id="' + slug + '"]');
         if (feedbackCard) {
@@ -640,6 +644,22 @@
     });
 
     document.querySelectorAll('[data-feedback-mentor-card]').forEach(bindFeedbackMentorCard);
+
+    var deleteMentorForm = document.querySelector('[data-delete-mentor-form]');
+    if (deleteMentorForm) {
+      deleteMentorForm.addEventListener('submit', function (event) {
+        var button = document.querySelector('[data-delete-mentor-button]');
+        var mentorForm = document.querySelector('.prompt-library-form');
+        var checked = mentorForm && mentorForm.querySelector('input[name="selected_prompt_mentor"]:checked');
+        var card = checked && checked.closest('[data-prompt-mentor-card]');
+        var nameNode = card && card.querySelector('.mentor-copy strong');
+        var mentorName = nameNode ? nameNode.textContent.trim() : (button && button.value) || 'this mentor';
+        var confirmed = window.confirm(
+          'Delete ' + mentorName + '? This permanently removes its uploaded references, generated prompts, and associated run copies from this computer.'
+        );
+        if (!confirmed) event.preventDefault();
+      });
+    }
 
     document.querySelectorAll('[data-type-choice]').forEach(function (choice) {
       choice.addEventListener('click', function () {
