@@ -25,8 +25,23 @@
     </section>
 
     <div class="notice error" role="alert" data-page-error {% if not error %}hidden{% endif %}><strong>We need one change:</strong> <span data-page-error-text>{{ error }}</span></div>
+    <div class="notice success" role="status" {% if request.args.get('restored') != '1' %}hidden{% endif %}><strong>Mentor defaults restored.</strong> Promptly is using the bundled prompt files and built-in mentor status again.</div>
 
     {% include "_prompt_library_blocks.html" %}
+
+    <section class="restore-defaults-section" aria-labelledby="restore-defaults-title">
+      <div class="restore-defaults-card">
+        <div class="restore-defaults-copy">
+          <span class="section-kicker">Local mentor data</span>
+          <h2 id="restore-defaults-title">Restore the bundled defaults</h2>
+          <p>Return prompt files and mentor visibility to the version included with Promptly. This removes local mentor libraries, uploaded references, generated prompt overrides, and run copies.</p>
+          <p class="restore-defaults-preserved">Model settings, API keys, Ollama, and downloaded models stay unchanged.</p>
+        </div>
+        <form method="post" action="{{ url_for('restore_mentor_defaults') }}" data-restore-defaults-form>
+          <button class="restore-defaults-button" type="submit">Restore mentor defaults</button>
+        </form>
+      </div>
+    </section>
 
     <footer><span>Promptly</span><p>Local-first PI-style prompt workspace.</p></footer>
   </main>
