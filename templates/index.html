@@ -13,7 +13,6 @@
       <a class="brand" href="{{ url_for('home') }}" aria-label="Promptly home"><span class="brand-mark">P</span><span>Promptly</span></a>
       <div class="nav-actions">
         <button class="nav-link nav-link-boxed settings-trigger" type="button" data-open-settings>Model settings</button>
-        <a class="nav-link nav-link-boxed" href="{{ url_for('prompt_library') }}">Build prompt library <span>&rarr;</span></a>
         <span class="status" data-provider-status><i></i> Python &middot; <span data-provider-status-text>{{ provider_label }}</span></span>
       </div>
     </nav>
@@ -48,22 +47,22 @@
         <div class="mentor-heading">
           <div>
             <h2 id="feedback-mentor-title">Choose a mentor for feedback</h2>
-            <p>Use a built-in profile or a PI-style library you generated above.</p>
+            <p>Use a PI-style library you generated above.</p>
           </div>
-          <span class="mentor-count">{{ mentors|length }} {% if mentors|length == 1 %}mentor{% else %}mentors{% endif %}</span>
+          <span class="mentor-count">{{ feedback_mentors|length }} {% if feedback_mentors|length == 1 %}mentor{% else %}mentors{% endif %}</span>
         </div>
         <div class="mentor-grid prompt-mentor-grid" role="list" aria-label="Feedback mentors" data-feedback-mentor-cards>
-          {% for mentor_id, mentor in mentors.items() %}
+          {% for mentor_id, mentor in feedback_mentors.items() %}
             <button
               type="button"
-              class="mentor-card{% if mentor_id == selected_mentor %} selected{% endif %}"
+              class="mentor-card{% if mentor_id == selected_feedback_mentor %} selected{% endif %}"
               role="listitem"
               data-feedback-mentor-card
               data-mentor-id="{{ mentor_id }}"
               data-mentor-name="{{ mentor.name }}"
               data-mentor-source="{{ mentor.source }}"
               data-mentor-description="{{ mentor.description }}"
-              {% if mentor_id == selected_mentor %}aria-current="true"{% endif %}
+              {% if mentor_id == selected_feedback_mentor %}aria-current="true"{% endif %}
             >
               <span class="mentor-avatar" aria-hidden="true">{{ mentor.initials }}</span>
               <span class="mentor-copy">
@@ -71,9 +70,15 @@
                 <strong>{{ mentor.name }}</strong>
                 <small>{{ mentor.description }}</small>
               </span>
-              <span class="mentor-selected" aria-hidden="true" data-mentor-selected-mark>{% if mentor_id == selected_mentor %}&#10003;{% else %}&rarr;{% endif %}</span>
+              <span class="mentor-selected" aria-hidden="true" data-mentor-selected-mark>{% if mentor_id == selected_feedback_mentor %}&#10003;{% else %}&rarr;{% endif %}</span>
             </button>
           {% endfor %}
+          {% if not feedback_mentors %}
+            <div class="mentor-empty-state" data-feedback-mentor-empty>
+              <strong>Create a PI-style library above</strong>
+              <small>After generating a library, it will appear here for feedback.</small>
+            </div>
+          {% endif %}
         </div>
       </section>
 
@@ -100,11 +105,11 @@
               <span class="file-badge">{{ type_info.formats }}</span>
               <h3>Upload your {{ type_info.upload_label }}</h3>
               <p>{{ type_info.description }}</p>
-              <p class="mentor-library-note">Feedback style: <strong data-feedback-style-name>{{ mentors[selected_mentor].name }}</strong><span data-feedback-style-extra>{% if mentors[selected_mentor].source == 'library' %} &mdash; {{ mentors[selected_mentor].description }}{% endif %}</span></p>
+              <p class="mentor-library-note">Feedback style: <strong data-feedback-style-name>{% if selected_feedback_mentor %}{{ feedback_mentors[selected_feedback_mentor].name }}{% else %}Create a PI-style library above{% endif %}</strong><span data-feedback-style-extra>{% if selected_feedback_mentor %} &mdash; {{ feedback_mentors[selected_feedback_mentor].description }}{% endif %}</span></p>
             </div>
             <form method="post" action="{{ url_for('feedback') }}" enctype="multipart/form-data" data-working-form data-working-target="feedback" data-ajax-form data-working-label="{{ working_label }}">
               <input type="hidden" name="content_type" value="{{ type_key }}">
-              <input type="hidden" name="mentor_id" value="{{ selected_mentor }}" data-feedback-mentor-input>
+              <input type="hidden" name="mentor_id" value="{{ selected_feedback_mentor }}" data-feedback-mentor-input>
               {% if selected_prompt_mentor %}<input type="hidden" name="selected_prompt_mentor" value="{{ selected_prompt_mentor }}" data-feedback-prompt-mentor-input>{% else %}<input type="hidden" name="selected_prompt_mentor" value="" data-feedback-prompt-mentor-input>{% endif %}
               <label class="file-picker"><span>Choose a {{ type_info.upload_label }}</span><input type="file" name="file" accept="{{ type_info.accept }}" required></label>
               <label class="focus-label">Optional feedback focus<input type="text" name="focus" maxlength="500" placeholder="{{ type_info.focus }}"></label>
@@ -129,7 +134,7 @@
         </div>
         <div data-feedback-content {% if not output %}class="feedback-content-empty"{% endif %}>
           {% if output %}
-            <div class="feedback-meta"><span data-feedback-mentor>Feedback from {{ mentors[selected_mentor].name }}</span><span data-feedback-filename>{{ filename }}</span></div>
+            <div class="feedback-meta"><span data-feedback-mentor>Feedback from {% if selected_feedback_mentor %}{{ feedback_mentors[selected_feedback_mentor].name }}{% else %}selected style{% endif %}</span><span data-feedback-filename>{{ filename }}</span></div>
             <details class="feedback-expand" open>
               <summary>Show full feedback</summary>
               <div class="answer markdown-body" data-feedback-answer>{{ output_html|safe }}</div>

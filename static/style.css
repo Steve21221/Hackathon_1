@@ -160,6 +160,9 @@ footer>span { color:var(--ink); font-weight:700; font-size:14px; }
 .prompt-mentor-section { margin:0 0 28px; padding:0 0 26px; border-top:0; border-bottom:1px solid rgba(23,35,28,.1); }
 .feedback-mentor-section { margin:0 0 22px; padding:0 0 18px; border-top:0; border-bottom:1px solid rgba(23,35,28,.1); }
 .feedback-mentor-section .mentor-card { text-decoration:none; }
+.mentor-empty-state { display:flex; flex-direction:column; gap:5px; padding:18px 20px; border:1px dashed rgba(36,84,59,.28); border-radius:18px; color:var(--muted); background:rgba(255,253,248,.72); }
+.mentor-empty-state strong { color:var(--ink); font-size:16px; }
+.mentor-empty-state small { font-size:12px; line-height:1.45; }
 .prompt-mentor-grid { grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px; }
 .prompt-mentor-grid .mentor-card { cursor:pointer; }
 .create-mentor-card .mentor-avatar { font:600 30px/1 system-ui,sans-serif; }

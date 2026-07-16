@@ -1,10 +1,11 @@
-    <section class="data-hero prompt-library-hero">
-      <div class="eyebrow"><span>&#10022;</span> Step 1 &middot; Learn a review style</div>
-      <h1>Build your PI-style<br><em>prompt library.</em></h1>
-      <p class="intro">Upload prior comments, meeting notes, slides, or manuscript feedback. Promptly extracts reusable review patterns and turns them into prompt files for future work.</p>
-    </section>
-
     <section class="upload-section prompt-library-section" aria-labelledby="prompt-library-title">
+      <div class="section-heading">
+        <div>
+          <span class="section-kicker">Step 1</span>
+          <h2 id="prompt-library-title">Learn a review style</h2>
+          <p>Upload prior comments, meeting notes, slides, or manuscript feedback. Promptly extracts reusable review patterns and turns them into prompt files for future work.</p>
+        </div>
+      </div>
       <form method="post" action="{{ url_for('generate_prompts') }}" enctype="multipart/form-data" class="prompt-library-form" data-working-form data-working-target="prompts" data-ajax-form data-working-label="{{ working_label }}">
         <section class="mentor-section prompt-mentor-section" id="prompt-mentor" aria-labelledby="prompt-mentor-title">
           <div class="mentor-heading">
@@ -64,7 +65,7 @@
       <div class="section-heading library-heading">
         <div>
           <span class="section-kicker">Reference materials</span>
-          <h2 id="prompt-library-title">Upload examples by review category</h2>
+          <h2>Upload examples by review category</h2>
           <p>Choose one or more categories. Each category produces its own reusable prompt.</p>
         </div>
         <span class="local-badge" data-provider-badge>{% if model_provider == 'ollama' %}Local Qwen extraction{% elif model_provider == 'openai' %}OpenAI extraction{% elif model_provider in ['claude', 'anthropic'] %}Claude extraction{% else %}Deterministic local extraction{% endif %}</span>

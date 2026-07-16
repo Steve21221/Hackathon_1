@@ -232,6 +232,98 @@
       });
     }
 
+    function updatePromptMentorCount(form) {
+      if (!form) return;
+      var count = form.querySelector('.prompt-mentor-section .mentor-count');
+      if (!count) return;
+      var total = form.querySelectorAll('[data-prompt-mentor-card]:not([data-create-mentor-card])').length;
+      count.textContent = total + (total === 1 ? ' library' : ' libraries');
+    }
+
+    function bindPromptMentorInput(input) {
+      if (!input || input.getAttribute('data-prompt-mentor-bound') === 'true') return;
+      input.setAttribute('data-prompt-mentor-bound', 'true');
+      input.addEventListener('change', function () { handleMentorSelectionChange(input); });
+    }
+
+    function ensurePromptMentorCard(mentorId, meta) {
+      if (!mentorId) return null;
+      var form = document.querySelector('.prompt-library-form');
+      var grid = form && form.querySelector('[data-prompt-mentor-cards]');
+      if (!form || !grid) return null;
+      var radio = grid.querySelector('input[name="selected_prompt_mentor"][value="' + mentorId + '"]');
+      if (radio) {
+        radio.checked = true;
+        bindPromptMentorInput(radio);
+        updatePromptMentorCards(form);
+        toggleMentorCreator(form);
+        toggleDeleteMentorButton(form);
+        return radio.closest('[data-prompt-mentor-card]');
+      }
+
+      var name = (meta && meta.name) || mentorId;
+      var description = (meta && meta.description) || 'Stored reference files and generated prompts for this mentor.';
+      var status = (meta && meta.status) || 'PI-style library';
+      var initials = (meta && meta.initials) || feedbackMentorInitials(name);
+
+      grid.querySelectorAll('input[name="selected_prompt_mentor"]').forEach(function (input) {
+        input.checked = false;
+      });
+
+      var label = document.createElement('label');
+      label.className = 'mentor-card selected';
+      label.setAttribute('role', 'radio');
+      label.setAttribute('aria-checked', 'true');
+      label.setAttribute('data-prompt-mentor-card', '');
+
+      radio = document.createElement('input');
+      radio.className = 'visually-hidden-file';
+      radio.type = 'radio';
+      radio.name = 'selected_prompt_mentor';
+      radio.value = mentorId;
+      radio.checked = true;
+      bindPromptMentorInput(radio);
+
+      var avatar = document.createElement('span');
+      avatar.className = 'mentor-avatar';
+      avatar.setAttribute('aria-hidden', 'true');
+      avatar.textContent = initials;
+
+      var copy = document.createElement('span');
+      copy.className = 'mentor-copy';
+      var statusNode = document.createElement('span');
+      statusNode.className = 'mentor-status';
+      statusNode.innerHTML = '<i></i>';
+      statusNode.appendChild(document.createTextNode(status));
+      var nameNode = document.createElement('strong');
+      nameNode.textContent = name;
+      var descriptionNode = document.createElement('small');
+      descriptionNode.textContent = description;
+      copy.appendChild(statusNode);
+      copy.appendChild(nameNode);
+      copy.appendChild(descriptionNode);
+
+      var selected = document.createElement('span');
+      selected.className = 'mentor-selected';
+      selected.setAttribute('aria-hidden', 'true');
+      selected.innerHTML = '&#10003;';
+
+      label.appendChild(radio);
+      label.appendChild(avatar);
+      label.appendChild(copy);
+      label.appendChild(selected);
+
+      var createCard = grid.querySelector('[data-create-mentor-card]');
+      if (createCard) grid.insertBefore(label, createCard);
+      else grid.appendChild(label);
+
+      updatePromptMentorCards(form);
+      toggleMentorCreator(form);
+      toggleDeleteMentorButton(form);
+      updatePromptMentorCount(form);
+      return label;
+    }
+
     function toggleMentorCreator(form) {
       if (!form) return;
       var creator = form.querySelector('[data-mentor-creator]');
@@ -341,6 +433,127 @@
       });
     }
 
+    function feedbackMentorInitials(name) {
+      var words = String(name || '').toUpperCase().match(/[A-Z0-9]+/g) || [];
+      if (!words.length) return 'PI';
+      if (words.length === 1) return words[0].slice(0, 2);
+      return words.slice(0, 2).map(function (word) { return word.charAt(0); }).join('');
+    }
+
+    function updateFeedbackMentorCount() {
+      var count = document.querySelector('.feedback-mentor-section .mentor-count');
+      if (!count) return;
+      var total = document.querySelectorAll('[data-feedback-mentor-card]').length;
+      count.textContent = total + (total === 1 ? ' mentor' : ' mentors');
+    }
+
+    function bindFeedbackMentorCard(card) {
+      if (!card || card.getAttribute('data-feedback-mentor-bound') === 'true') return;
+      card.setAttribute('data-feedback-mentor-bound', 'true');
+      card.addEventListener('click', function () {
+        selectFeedbackMentor(card.getAttribute('data-mentor-id'), {
+          name: card.getAttribute('data-mentor-name'),
+          source: card.getAttribute('data-mentor-source'),
+          description: card.getAttribute('data-mentor-description')
+        });
+      });
+    }
+
+    function ensureFeedbackMentorCard(mentorId, meta) {
+      if (!mentorId) return null;
+      var grid = document.querySelector('[data-feedback-mentor-cards]');
+      if (!grid) return null;
+      var card = grid.querySelector('[data-feedback-mentor-card][data-mentor-id="' + mentorId + '"]');
+      if (card) {
+        bindFeedbackMentorCard(card);
+        return card;
+      }
+
+      var name = (meta && meta.name) || mentorId;
+      var description = (meta && meta.description) || 'Generated and ready for feedback.';
+      var status = (meta && meta.status) || 'PI-style library';
+      var initials = (meta && meta.initials) || feedbackMentorInitials(name);
+
+      var empty = grid.querySelector('[data-feedback-mentor-empty]');
+      if (empty) empty.remove();
+
+      card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'mentor-card';
+      card.setAttribute('role', 'listitem');
+      card.setAttribute('data-feedback-mentor-card', '');
+      card.setAttribute('data-mentor-id', mentorId);
+      card.setAttribute('data-mentor-name', name);
+      card.setAttribute('data-mentor-source', 'library');
+      card.setAttribute('data-mentor-description', description);
+
+      var avatar = document.createElement('span');
+      avatar.className = 'mentor-avatar';
+      avatar.setAttribute('aria-hidden', 'true');
+      avatar.textContent = initials;
+
+      var copy = document.createElement('span');
+      copy.className = 'mentor-copy';
+      var statusNode = document.createElement('span');
+      statusNode.className = 'mentor-status';
+      statusNode.innerHTML = '<i></i>';
+      statusNode.appendChild(document.createTextNode(status));
+      var nameNode = document.createElement('strong');
+      nameNode.textContent = name;
+      var descriptionNode = document.createElement('small');
+      descriptionNode.textContent = description;
+      copy.appendChild(statusNode);
+      copy.appendChild(nameNode);
+      copy.appendChild(descriptionNode);
+
+      var selected = document.createElement('span');
+      selected.className = 'mentor-selected';
+      selected.setAttribute('aria-hidden', 'true');
+      selected.setAttribute('data-mentor-selected-mark', '');
+      selected.innerHTML = '&rarr;';
+
+      card.appendChild(avatar);
+      card.appendChild(copy);
+      card.appendChild(selected);
+      grid.appendChild(card);
+      bindFeedbackMentorCard(card);
+      updateFeedbackMentorCount();
+      return card;
+    }
+
+    function activateGeneratedFeedbackMentor(data) {
+      if (!data || !data.selected_prompt_mentor) return;
+      var mentorId = data.selected_prompt_mentor;
+      var mentorName = data.selected_prompt_mentor_name || mentorId;
+      var mentorMeta = data.mentors && data.mentors[mentorId]
+        ? data.mentors[mentorId]
+        : { name: mentorName, source: 'library', status: 'PI-style library', description: 'Generated and ready for feedback.' };
+      mentorMeta.name = mentorMeta.name || mentorName;
+      mentorMeta.source = 'library';
+      ensurePromptMentorCard(mentorId, mentorMeta);
+      var card = ensureFeedbackMentorCard(mentorId, mentorMeta);
+      if (card) {
+        selectFeedbackMentor(mentorId, {
+          name: card.getAttribute('data-mentor-name') || mentorName,
+          source: 'library',
+          description: card.getAttribute('data-mentor-description') || ''
+        });
+        return;
+      }
+      document.querySelectorAll('[data-feedback-mentor-input]').forEach(function (input) {
+        input.value = mentorId;
+      });
+      document.querySelectorAll('[data-feedback-prompt-mentor-input]').forEach(function (input) {
+        input.value = mentorId;
+      });
+      document.querySelectorAll('[data-feedback-style-name]').forEach(function (node) {
+        node.textContent = mentorName;
+      });
+      document.querySelectorAll('[data-feedback-style-extra]').forEach(function (node) {
+        node.textContent = ' — PI-style library';
+      });
+    }
+
     function selectFeedbackType(typeKey) {
       document.querySelectorAll('[data-type-choice]').forEach(function (choice) {
         var selected = choice.getAttribute('data-type-key') === typeKey;
@@ -410,23 +623,15 @@
       });
     }
 
-    document.querySelectorAll('input[name="selected_prompt_mentor"]').forEach(function (input) {
+    document.querySelectorAll('.prompt-library-form input[name="selected_prompt_mentor"]').forEach(function (input) {
       var form = input.closest('form');
-      input.addEventListener('change', function () { handleMentorSelectionChange(input); });
+      bindPromptMentorInput(input);
       updatePromptMentorCards(form);
       toggleMentorCreator(form);
       toggleDeleteMentorButton(form);
     });
 
-    document.querySelectorAll('[data-feedback-mentor-card]').forEach(function (card) {
-      card.addEventListener('click', function () {
-        selectFeedbackMentor(card.getAttribute('data-mentor-id'), {
-          name: card.getAttribute('data-mentor-name'),
-          source: card.getAttribute('data-mentor-source'),
-          description: card.getAttribute('data-mentor-description')
-        });
-      });
-    });
+    document.querySelectorAll('[data-feedback-mentor-card]').forEach(bindFeedbackMentorCard);
 
     document.querySelectorAll('[data-type-choice]').forEach(function (choice) {
       choice.addEventListener('click', function () {
@@ -498,6 +703,7 @@
 
           if (target === 'prompts') {
             renderPromptResults(result.data);
+            activateGeneratedFeedbackMentor(result.data);
             if (result.data.selected_prompt_mentor && window.history && window.history.replaceState) {
               syncUrlQuery({
                 prompt_mentor: result.data.selected_prompt_mentor,

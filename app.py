@@ -1057,17 +1057,26 @@ def render_home(**context: Any):
     defaults.update(prompt_library_context(default_clean_endpoint="home", **context))
     defaults.update(context)
     mentors = list_feedback_mentors()
+    feedback_mentors = {
+        mentor_id: mentor
+        for mentor_id, mentor in mentors.items()
+        if mentor.get("source") == "library"
+    }
     selected_mentor = resolve_feedback_mentor_id(
         str(defaults.get("selected_mentor", "")),
         str(defaults.get("selected_prompt_mentor", "")),
     )
     defaults["selected_mentor"] = selected_mentor
+    defaults["selected_feedback_mentor"] = (
+        selected_mentor if selected_mentor in feedback_mentors else ""
+    )
     if defaults.get("output") and not defaults.get("output_html"):
         defaults["output_html"] = render_markdown_html(str(defaults["output"]))
     return render_template(
         "index.html",
         upload_types=UPLOAD_TYPES,
         mentors=mentors,
+        feedback_mentors=feedback_mentors,
         reference_upload_groups=REFERENCE_UPLOAD_GROUPS,
         supported_reference_extensions=", ".join(sorted(SUPPORTED_EXTENSIONS)),
         render_prompt_preview=render_prompt_preview,
@@ -1103,7 +1112,7 @@ def home():
 
 @app.get("/prompt-library")
 def prompt_library():
-    return render_prompt_library()
+    return redirect(url_for("home"))
 
 
 @app.post("/generate-prompts")

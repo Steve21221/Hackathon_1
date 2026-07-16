@@ -47,7 +47,10 @@ class PromptlyTestCase(unittest.TestCase):
     def test_home_page_embeds_pi_style_library_workflow(self):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Build your PI-style", response.data)
+        self.assertNotIn(b"<h1>Build your PI-style", response.data)
+        self.assertNotIn(b'href="/prompt-library"', response.data)
+        self.assertNotIn(b"Build prompt library", response.data)
+        self.assertIn(b"Choose your mentor", response.data)
         self.assertIn(b'name="research_files"', response.data)
         self.assertIn(b'name="slide_files"', response.data)
         self.assertIn(b'name="paper_files"', response.data)
@@ -56,12 +59,17 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertNotIn(b"Mentor data", response.data)
 
         library_response = self.client.get("/prompt-library")
-        self.assertEqual(library_response.status_code, 200)
-        self.assertIn(b"Build your PI-style", library_response.data)
-        self.assertIn(b"Feedback workspace", library_response.data)
-        self.assertIn(b"nav-link-boxed", library_response.data)
+        self.assertEqual(library_response.status_code, 302)
+        self.assertEqual(library_response.headers["Location"], "/")
 
         self.assertEqual(self.client.get("/mentor-data").status_code, 404)
+
+    def test_home_page_hides_static_available_mentor_card(self):
+        response = self.client.get("/?type=research-ideas")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b"Dr. Nanshu Lu", response.data)
+        self.assertNotIn(b"Available mentor", response.data)
+        self.assertIn(b"Create a PI-style library above", response.data)
 
     def test_prompt_generation_returns_home_page_with_ready_prompts(self):
         response = self.client.post(
@@ -303,7 +311,7 @@ class PromptlyTestCase(unittest.TestCase):
         )
         library = Path(app.config["MENTOR_LIBRARY_DIR"]) / "delete-mentor"
 
-        selected = self.client.get("/prompt-library?prompt_mentor=delete-mentor")
+        selected = self.client.get("/?prompt_mentor=delete-mentor")
         self.assertEqual(selected.status_code, 200)
         self.assertIn(b"Delete Mentor", selected.data)
         self.assertIn(b"Delete library", selected.data)
