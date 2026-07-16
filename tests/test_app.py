@@ -591,6 +591,14 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertNotIn("$n$", rendered)
         self.assertNotIn(r"\pm", rendered)
 
+    def test_feedback_markdown_handles_long_non_heading_line(self):
+        long_line = "Unrecognized heading " + (" " * 100_000) + "!"
+
+        rendered = render_markdown_html(long_line)
+
+        self.assertIn("Unrecognized heading", rendered)
+        self.assertIn("!", rendered)
+
     def test_mentor_style_prompts_are_available_for_all_three_modes(self):
         research_prompt = load_mentor_prompt("dr-nanshu-lu", "research-ideas")
         paper_prompt = load_mentor_prompt("dr-nanshu-lu", "papers-proposals")
