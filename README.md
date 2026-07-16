@@ -12,7 +12,7 @@ Feedback uploads are read in memory and are not saved by the website. The maximu
 
 ## Build a PI-style prompt library
 
-The homepage integrates the `xianke-pi-style-workspace` extraction workflow with the main feedback workspace, and `/prompt-library` remains available as a focused prompt-library view. Upload prior PI comments or examples in any of these groups:
+The feedback workspace is the homepage. Use the boxed **Modify a review style** link to open the separate `/prompt-library` workspace, where you can upload prior PI comments or examples in any of these groups:
 
 - Research ideas and meeting minutes
 - Talks, presentations, and slides
@@ -38,7 +38,7 @@ Currently available:
 
 - **Dr. Nanshu Lu** (`dr-nanshu-lu`)
 
-The current general prompt is stored in `Mentor_Data/dr-nanshu-lu.txt`. It is intentionally easy to replace when the prompt contributor supplies a validated version. Each mentor listed on the website has a corresponding prompt file in `Mentor_Data`; additional mentors can be added to the `MENTORS` configuration and that folder.
+Dr. Lu's version-controlled starting profile contains three category-specific files under `Mentor_Data/dr-nanshu-lu/`: `meeting_research_pi.txt`, `paper_proposal_pi.txt`, and `slides_talk_pi.txt`. Promptly automatically loads the file matching the selected feedback category. Additional built-in mentors can be added with the same three-file structure and a corresponding `MENTORS` entry.
 
 ## Contributors
 
@@ -212,10 +212,10 @@ The application extracts text from the upload in memory, then sends the extracte
 
 The prompt contributor does not need to edit the Flask routes or file extraction code.
 
-1. Open `Mentor_Data/dr-nanshu-lu.txt`.
-2. Replace the temporary general profile with the validated mentor-style prompt.
-3. Keep the prompt focused on review priorities, tone, critical questions, response organization, and examples of desired feedback behavior.
-4. Do not include an API key or private research content in the prompt file.
+1. Open the appropriate file under `Mentor_Data/dr-nanshu-lu/` for research ideas, papers and proposals, or talks and slides.
+2. Update only the category whose reviewed mentor-style evidence has changed.
+3. Keep each file standalone and focused on review priorities, reasoning sequence, tone, critical questions, and response organization.
+4. Do not include an API key, source quotations, or private research content in any prompt file.
 5. Run the tests, then submit the change on a separate branch and pull request.
 
 ## How feedback is generated

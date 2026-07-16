@@ -12,11 +12,17 @@
     <nav class="nav" aria-label="Main navigation">
       <a class="brand" href="{{ url_for('home') }}" aria-label="Promptly home"><span class="brand-mark">P</span><span>Promptly</span></a>
       <div class="nav-actions">
-        <button class="nav-link nav-link-boxed settings-trigger" type="button" data-open-settings>Model settings</button>
         <a class="nav-link nav-link-boxed" href="{{ url_for('home') }}"><span>&larr;</span> Feedback workspace</a>
+        <button class="nav-link nav-link-boxed settings-trigger" type="button" data-open-settings>Model settings</button>
         <span class="status" data-provider-status><i></i><span data-provider-status-text>{% if model_provider == 'ollama' %}Local Qwen extraction{% elif model_provider == 'openai' %}OpenAI extraction{% elif model_provider in ['claude', 'anthropic'] %}Claude extraction{% else %}Local extraction{% endif %}</span></span>
       </div>
     </nav>
+
+    <section class="hero library-page-hero">
+      <div class="eyebrow"><span>&#10022;</span> Mentor library</div>
+      <h1><span>Modify a review style.</span><em>Reuse it thoughtfully.</em></h1>
+      <p class="intro">Upload examples of a mentor&rsquo;s prior feedback. Promptly identifies reusable review patterns and creates local prompt files for future work.</p>
+    </section>
 
     <div class="notice error" role="alert" data-page-error {% if not error %}hidden{% endif %}><strong>We need one change:</strong> <span data-page-error-text>{{ error }}</span></div>
 

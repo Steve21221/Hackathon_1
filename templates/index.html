@@ -12,6 +12,7 @@
     <nav class="nav" aria-label="Main navigation">
       <a class="brand" href="{{ url_for('home') }}" aria-label="Promptly home"><span class="brand-mark">P</span><span>Promptly</span></a>
       <div class="nav-actions">
+        <a class="nav-link nav-link-boxed" href="{{ url_for('prompt_library') }}">Modify a review style <span>&rarr;</span></a>
         <button class="nav-link nav-link-boxed settings-trigger" type="button" data-open-settings>Model settings</button>
         <span class="status" data-provider-status><i></i> Python &middot; <span data-provider-status-text>{{ provider_label }}</span></span>
       </div>
@@ -25,19 +26,11 @@
 
     <div class="notice error" role="alert" data-page-error {% if not error %}hidden{% endif %}><strong>We need one change:</strong> <span data-page-error-text>{{ error }}</span></div>
 
-    <div class="workspace-block library-workspace">
-      {% include "_prompt_library_blocks.html" %}
-    </div>
-
-    <div class="workspace-divider" aria-hidden="true">
-      <span>Feedback workspace</span>
-    </div>
-
     <div class="workspace-block feedback-workspace" data-feedback-workspace>
     <section class="upload-section" id="upload" aria-labelledby="upload-title">
       <div class="section-heading">
         <div>
-          <span class="section-kicker">Step 2</span>
+          <span class="section-kicker">Feedback workspace</span>
           <h2 id="upload-title">What kind of feedback do you need?</h2>
           <p>Choose a mentor style, then a category so review can focus on what matters most.</p>
         </div>
@@ -47,7 +40,7 @@
         <div class="mentor-heading">
           <div>
             <h2 id="feedback-mentor-title">Choose a mentor for feedback</h2>
-            <p>Use a PI-style library you generated above.</p>
+            <p>Choose the built-in starting profile or a PI-style library created on the Modify a review style page.</p>
           </div>
           <span class="mentor-count">{{ feedback_mentors|length }} {% if feedback_mentors|length == 1 %}mentor{% else %}mentors{% endif %}</span>
         </div>
@@ -75,8 +68,8 @@
           {% endfor %}
           {% if not feedback_mentors %}
             <div class="mentor-empty-state" data-feedback-mentor-empty>
-              <strong>Create a PI-style library above</strong>
-              <small>After generating a library, it will appear here for feedback.</small>
+              <strong>No mentor libraries yet</strong>
+              <small><a class="inline-action-link" href="{{ url_for('prompt_library') }}">Modify a review style</a> to create one, then return here for feedback.</small>
             </div>
           {% endif %}
         </div>
@@ -105,7 +98,7 @@
               <span class="file-badge">{{ type_info.formats }}</span>
               <h3>Upload your {{ type_info.upload_label }}</h3>
               <p>{{ type_info.description }}</p>
-              <p class="mentor-library-note">Feedback style: <strong data-feedback-style-name>{% if selected_feedback_mentor %}{{ feedback_mentors[selected_feedback_mentor].name }}{% else %}Create a PI-style library above{% endif %}</strong><span data-feedback-style-extra>{% if selected_feedback_mentor %} &mdash; {{ feedback_mentors[selected_feedback_mentor].description }}{% endif %}</span></p>
+              <p class="mentor-library-note">Feedback style: <strong data-feedback-style-name>{% if selected_feedback_mentor %}{{ feedback_mentors[selected_feedback_mentor].name }}{% else %}Create a PI-style library first{% endif %}</strong><span data-feedback-style-extra>{% if selected_feedback_mentor %} &mdash; {{ feedback_mentors[selected_feedback_mentor].description }}{% endif %}</span></p>
             </div>
             <form method="post" action="{{ url_for('feedback') }}" enctype="multipart/form-data" data-working-form data-working-target="feedback" data-ajax-form data-working-label="{{ working_label }}">
               <input type="hidden" name="content_type" value="{{ type_key }}">
