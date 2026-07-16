@@ -10,6 +10,8 @@ Promptly is a local-first Python website for uploading work and receiving catego
 
 Feedback uploads are read in memory and are not saved by the website. The maximum file size is 20 MB.
 
+When local Ollama is selected, Promptly can extract up to approximately 500,000 characters from a feedback file. Long reviews are divided into bounded sections, reviewed locally one at a time, and synthesized into one final mentor response. This uses more local processing time but does not create per-token API charges. OpenAI, Claude, and demo mode retain the smaller 100,000-character extraction limit.
+
 ## Build a PI-style prompt library
 
 The feedback workspace is the homepage. Use the boxed **Modify a review style** link to open the separate `/prompt-library` workspace, where you can upload prior PI comments or examples in any of these groups:

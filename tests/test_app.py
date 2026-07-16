@@ -6,7 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from app import app, build_feedback_prompt, call_model, load_mentor_prompt
+from app import app, build_feedback_prompt, call_model, load_mentor_prompt, split_review_text
 from docx import Document
 from pptx import Presentation
 
@@ -604,7 +604,7 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertEqual(payload["model"], "qwen3.5:9b")
         self.assertTrue(payload["think"])
         self.assertFalse(payload["stream"])
-        self.assertEqual(payload["options"]["num_predict"], 4_096)
+        self.assertEqual(payload["options"]["num_predict"], 6_144)
         self.assertIn("Dr. Nanshu Lu", payload["messages"][0]["content"])
         self.assertIn("A testable idea", payload["messages"][1]["content"])
 
@@ -633,7 +633,37 @@ class PromptlyTestCase(unittest.TestCase):
         retry_payload = mock_post.call_args_list[1].kwargs["json"]
         self.assertTrue(first_payload["think"])
         self.assertFalse(retry_payload["think"])
-        self.assertEqual(retry_payload["options"]["num_predict"], 2_000)
+        self.assertEqual(retry_payload["options"]["num_predict"], 3_000)
+
+    def test_long_review_text_is_split_without_losing_content(self):
+        text = ("A research claim with supporting evidence. " * 3_000).strip()
+        chunks = split_review_text(text, max_chars=10_000)
+        self.assertGreater(len(chunks), 1)
+        self.assertTrue(all(len(chunk) <= 10_000 for chunk in chunks))
+        self.assertEqual(" ".join(chunks), text)
+
+    @patch("app.requests.post")
+    def test_ollama_reviews_large_files_in_chunks_then_synthesizes(self, mock_post):
+        os.environ["MODEL_PROVIDER"] = "ollama"
+        os.environ["OLLAMA_MODEL"] = "qwen3.5:9b"
+        responses = []
+        for content in ("First section review", "Second section review", "Final synthesis"):
+            response = Mock()
+            response.json.return_value = {"message": {"content": content, "thinking": ""}}
+            responses.append(response)
+        mock_post.side_effect = responses
+        long_prompt = "A" * 75_000
+
+        result = call_model(long_prompt, mentor_id="dr-nanshu-lu")
+
+        self.assertEqual(result, "Final synthesis")
+        self.assertEqual(mock_post.call_count, 3)
+        first_prompt = mock_post.call_args_list[0].kwargs["json"]["messages"][1]["content"]
+        final_prompt = mock_post.call_args_list[2].kwargs["json"]["messages"][1]["content"]
+        self.assertIn("section 1 of 2", first_prompt)
+        self.assertIn("First section review", final_prompt)
+        self.assertIn("Second section review", final_prompt)
+        self.assertNotIn("A" * 1_000, final_prompt)
 
     @patch("app.Anthropic")
     def test_claude_receives_mentor_profile_and_review(self, mock_anthropic):

@@ -53,6 +53,8 @@ app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024
 
 MAX_PROMPT_LENGTH = 4_000
 MAX_EXTRACTED_TEXT = 100_000
+MAX_LOCAL_EXTRACTED_TEXT = 500_000
+OLLAMA_REVIEW_CHUNK_CHARS = 50_000
 MAX_PROMPT_PREVIEW_SEGMENTS = 3
 DELETE_REFERENCE_FILE_ERROR = "Please select an existing library file to delete."
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -427,7 +429,7 @@ def call_model(
     )
 
     if provider == "ollama":
-        return call_ollama(instructions, prompt)
+        return call_ollama(instructions, prompt, chunk_large_prompt=True)
     if provider == "openai":
         return call_openai(instructions, prompt)
     if provider in {"claude", "anthropic"}:
@@ -435,15 +437,39 @@ def call_model(
     raise ValueError("MODEL_PROVIDER must be demo, ollama, openai, or claude.")
 
 
-def call_ollama(instructions: str, prompt: str) -> str:
-    """Generate local feedback with a thinking-capable model served by Ollama."""
-    base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
-    model = os.getenv("OLLAMA_MODEL", "qwen3.5:9b").strip() or "qwen3.5:9b"
+def split_review_text(text: str, max_chars: int = OLLAMA_REVIEW_CHUNK_CHARS) -> list[str]:
+    """Split a long review request near whitespace while preserving every character."""
+    remaining = text.strip()
+    chunks: list[str] = []
+    while len(remaining) > max_chars:
+        cut = max(
+            remaining.rfind("\n\n", 0, max_chars),
+            remaining.rfind("\n", 0, max_chars),
+            remaining.rfind(" ", 0, max_chars),
+        )
+        if cut < max_chars // 2:
+            cut = max_chars
+        chunk = remaining[:cut].strip()
+        if chunk:
+            chunks.append(chunk)
+        remaining = remaining[cut:].strip()
+    if remaining:
+        chunks.append(remaining)
+    return chunks
+
+
+def request_ollama(
+    base_url: str,
+    model: str,
+    instructions: str,
+    prompt: str,
+    attempts: tuple[tuple[bool, int], ...],
+) -> str:
+    """Request one Ollama answer, retrying without thinking if final content is empty."""
     messages = [
         {"role": "system", "content": instructions},
         {"role": "user", "content": prompt},
     ]
-    attempts = ((True, 4_096), (False, 2_000))
     for think, output_tokens in attempts:
         response = requests.post(
             f"{base_url}/api/chat",
@@ -472,6 +498,64 @@ def call_ollama(instructions: str, prompt: str) -> str:
 
     raise ValueError(
         "Ollama could not produce a final response. Try a shorter file or a more focused request."
+    )
+
+
+def call_ollama(
+    instructions: str,
+    prompt: str,
+    *,
+    chunk_large_prompt: bool = False,
+) -> str:
+    """Generate local feedback with a thinking-capable model served by Ollama."""
+    base_url = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
+    model = os.getenv("OLLAMA_MODEL", "qwen3.5:9b").strip() or "qwen3.5:9b"
+    chunks = split_review_text(prompt) if chunk_large_prompt else [prompt]
+    if len(chunks) == 1:
+        return request_ollama(
+            base_url,
+            model,
+            instructions,
+            prompt,
+            attempts=((True, 6_144), (False, 3_000)),
+        )
+
+    partial_reviews: list[str] = []
+    chunk_count = len(chunks)
+    for index, chunk in enumerate(chunks, start=1):
+        partial_prompt = (
+            f"This is section {index} of {chunk_count} from one uploaded document. "
+            "Review only this section. Identify concrete strengths, weaknesses, unsupported claims, "
+            "critical questions, and actionable corrections. Do not attempt the final overall review yet.\n\n"
+            f"{chunk}"
+        )
+        partial_reviews.append(
+            request_ollama(
+                base_url,
+                model,
+                instructions,
+                partial_prompt,
+                attempts=((True, 2_048), (False, 1_500)),
+            )
+        )
+
+    synthesis_prompt = (
+        "Create the final mentor feedback for the uploaded document using the section reviews below. "
+        "Synthesize rather than concatenate: remove duplicates, reconcile related observations, "
+        "prioritize the most consequential issues, and preserve specific evidence. Do not mention "
+        "sections, chunks, token limits, or this synthesis step. Organize the response into strengths, "
+        "improvements, critical questions, and recommended next steps.\n\n"
+        + "\n\n".join(
+            f"SECTION REVIEW {index}:\n{review}"
+            for index, review in enumerate(partial_reviews, start=1)
+        )
+    )
+    return request_ollama(
+        base_url,
+        model,
+        instructions,
+        synthesis_prompt,
+        attempts=((True, 6_144), (False, 3_000)),
     )
 
 
@@ -648,7 +732,13 @@ def extract_text(file_bytes: bytes, extension: str) -> str:
     text = text.strip()
     if not text:
         raise ValueError("No readable text was found in the uploaded file.")
-    return text[:MAX_EXTRACTED_TEXT]
+    limit = MAX_LOCAL_EXTRACTED_TEXT if current_provider() == "ollama" else MAX_EXTRACTED_TEXT
+    if len(text) > limit:
+        return (
+            text[:limit]
+            + "\n\n[Promptly note: additional text was omitted because this file exceeded the review limit.]"
+        )
+    return text
 
 
 def build_feedback_prompt(
