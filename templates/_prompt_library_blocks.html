@@ -46,8 +46,9 @@
             <button
               class="delete-mentor-button"
               type="submit"
-              formaction="{{ url_for('delete_mentor') }}"
-              formmethod="post"
+              form="delete-mentor-form"
+              name="selected_prompt_mentor"
+              value="{{ selected_prompt_mentor }}"
               formnovalidate
               data-delete-mentor-button
               {% if not selected_prompt_mentor %}hidden{% endif %}
@@ -103,6 +104,7 @@
           <span data-working-message>Working</span>
         </p>
       </form>
+      <form id="delete-mentor-form" method="post" action="{{ url_for('delete_mentor') }}"></form>
     </section>
 
     <section class="feedback-section prompt-output-section" aria-labelledby="prompt-output-title" data-prompt-output {% if not prompt_cards %}hidden{% endif %}>

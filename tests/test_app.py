@@ -203,6 +203,15 @@ class PromptlyTestCase(unittest.TestCase):
             response.data.index(b"Upload examples by review category"),
         )
 
+    def test_delete_mentor_uses_a_separate_form_from_new_mentor_creation(self):
+        response = self.client.get("/prompt-library")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'id="delete-mentor-form"', response.data)
+        self.assertIn(b'form="delete-mentor-form"', response.data)
+        self.assertIn(b'name="selected_prompt_mentor"', response.data)
+        self.assertNotIn(b'formaction="/delete-mentor"', response.data)
+
     def test_named_prompt_library_persists_files_and_stable_prompts(self):
         response = self.client.post(
             "/generate-prompts",
