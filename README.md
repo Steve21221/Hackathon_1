@@ -89,6 +89,16 @@ The published setup downloads the `main` branch. Contributors testing a pull-req
 powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Downloads\Hackathon_1-main\installer\Promptly-Setup.ps1" -RepositoryBranch "codex/separate-review-style"
 ```
 
+### Uninstall Promptly without removing Ollama
+
+Use [`installer/Promptly-Uninstall.ps1`](installer/Promptly-Uninstall.ps1) to remove only the Promptly website. Close Promptly, download the uninstaller, and run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Downloads\Promptly-Uninstall.ps1"
+```
+
+The script asks you to type `UNINSTALL`, stops only Promptly's Python processes, removes the Promptly desktop shortcut, and deletes `%LOCALAPPDATA%\Promptly`. This also deletes Promptly settings, mentor libraries, uploaded references, and generated outputs. It does **not** uninstall Ollama, stop the Ollama server, or delete models stored under `%USERPROFILE%\.ollama`.
+
 ### Manual setup
 
 #### First-time setup

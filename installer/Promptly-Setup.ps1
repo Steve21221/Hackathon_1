@@ -138,6 +138,7 @@ try {
             throw "The downloaded Promptly package is missing $requiredPath. Please download a published release and run setup again."
         }
     }
+    "Promptly local website installation" | Set-Content -Path (Join-Path $InstallDirectory ".promptly-install") -Encoding ASCII
 
     Write-Step "Creating Promptly's private Python environment"
     $pythonExecutable = $pythonCommand.Executable
