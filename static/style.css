@@ -129,7 +129,9 @@ form.is-working [data-working-button] { opacity:.92; cursor:wait; pointer-events
 .markdown-body h2 { font-size:1.3em; }
 .markdown-body h3 { font-size:1.12em; }
 .markdown-body p { margin:.7em 0; }
-.markdown-body ul,.markdown-body ol { margin:.55em 0 .9em; padding-left:1.3em; }
+.markdown-body ul,.markdown-body ol { margin:.55em 0 .9em; }
+.markdown-body ul { padding-left:1.3em; }
+.markdown-body ol { padding-left:2.4em; }
 .markdown-body li { margin:.28em 0; }
 .markdown-body li::marker { color:var(--green); }
 .markdown-body strong { color:#123325; }
