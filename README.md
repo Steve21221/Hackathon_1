@@ -51,27 +51,36 @@ Dr. Lu's version-controlled starting profile contains three category-specific fi
 
 The downloadable setup script installs Promptly in `%LOCALAPPDATA%\Promptly`, prepares its private Python environment, installs Ollama when needed, downloads the selected Qwen model, and creates a **Promptly** desktop shortcut.
 
-1. Download [`installer/Promptly-Setup.ps1`](installer/Promptly-Setup.ps1) from GitHub using the **Download raw file** button.
-2. Open PowerShell and run:
+1. On the repository page, select **Code**, then **Download ZIP**.
+2. Extract the ZIP file in Downloads. The setup script will be inside the extracted repository folder at `Hackathon_1-main\installer\Promptly-Setup.ps1`.
+3. Open PowerShell and run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Downloads\Hackathon_1-main\installer\Promptly-Setup.ps1"
+```
+
+If the extracted folder has a different name, replace `Hackathon_1-main` with the folder name shown in Downloads.
+
+Alternatively, download only [`installer/Promptly-Setup.ps1`](installer/Promptly-Setup.ps1) using GitHub's **Download raw file** button. When the script itself is saved directly in Downloads, run:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Downloads\Promptly-Setup.ps1"
 ```
 
-3. Choose a model based on the computer:
+4. Choose a model based on the computer:
 
    - Qwen 3.5 4B: approximately 3.4 GB; start here for a computer with 16 GB RAM.
    - Qwen 3.5 9B: approximately 6.6 GB; recommended default for 32 GB RAM.
    - Qwen 3.5 27B: approximately 17 GB; strongest offered setup option, recommended for 64 GB RAM.
 
-4. After setup, double-click **Promptly** on the desktop. Keep the opened command window running while using the website; close it or press `Ctrl+C` to stop Promptly.
+5. After setup, double-click **Promptly** on the desktop. Keep the opened command window running while using the website; close it or press `Ctrl+C` to stop Promptly.
 
 The setup needs internet access to download the code, Python packages, Ollama, and the model. After installation, feedback generation runs locally without an API key or per-token fee.
 
 The published setup downloads the `main` branch. Contributors testing a pull-request branch before it is merged can pass its name explicitly, for example:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Downloads\Promptly-Setup.ps1" -RepositoryBranch "codex/separate-review-style"
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Downloads\Hackathon_1-main\installer\Promptly-Setup.ps1" -RepositoryBranch "codex/separate-review-style"
 ```
 
 ### Manual setup
