@@ -74,7 +74,7 @@
 
         <div class="reference-choices" aria-label="PI-style reference categories">
           {% for mode, group in reference_upload_groups.items() %}
-            <label class="reference-choice">
+            <label class="reference-choice reference-choice-{{ mode|replace('_', '-') }}">
               <span class="choice-icon" aria-hidden="true">{{ group.label[0] }}</span>
               <span class="choice-copy"><strong>{{ group.label }}</strong><small>{{ group.description }}</small></span>
               <input class="visually-hidden-file" id="{{ group.field }}" type="file" name="{{ group.field }}" accept=".pdf,.docx,.pptx,.txt,.md" multiple>

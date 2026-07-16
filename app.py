@@ -260,6 +260,11 @@ UPLOAD_TYPES = {
 }
 
 REFERENCE_UPLOAD_GROUPS = {
+    "paper_proposal_pi": {
+        "field": "paper_files",
+        "label": "Papers / proposals",
+        "description": "Manuscript comments, proposal feedback, reviewer notes, and paper drafts.",
+    },
     "meeting_research_pi": {
         "field": "research_files",
         "label": "Research ideas / meeting minutes",
@@ -269,11 +274,6 @@ REFERENCE_UPLOAD_GROUPS = {
         "field": "slide_files",
         "label": "Talks / presentations / slides",
         "description": "Slide drafts, talk feedback, figure sets, and presentation notes.",
-    },
-    "paper_proposal_pi": {
-        "field": "paper_files",
-        "label": "Papers / proposals",
-        "description": "Manuscript comments, proposal feedback, reviewer notes, and paper drafts.",
     },
 }
 

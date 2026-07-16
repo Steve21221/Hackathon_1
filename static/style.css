@@ -184,8 +184,8 @@ footer>span { color:var(--ink); font-weight:700; font-size:14px; }
 .mentor-library-note { grid-column:1 / -1; margin:0; color:var(--muted); font-size:12px; line-height:1.45; }
 .reference-choices { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
 .reference-choice { --accent:#315d46; --soft:#dce9dc; position:relative; display:grid; grid-template-columns:46px minmax(0,1fr); gap:12px; align-content:start; min-height:230px; padding:17px; border:1px solid var(--line); border-radius:15px; background:var(--paper); cursor:pointer; transition:.18s ease; }
-.reference-choice:nth-child(2) { --accent:#9a573c; --soft:#f1dfd7; }
-.reference-choice:nth-child(3) { --accent:#4b587e; --soft:#e3e5ef; }
+.reference-choice-meeting-research-pi { --accent:#4b587e; --soft:#e3e5ef; }
+.reference-choice-slides-talk-pi { --accent:#9a573c; --soft:#f1dfd7; }
 .reference-choice:hover,.reference-choice.has-files { transform:translateY(-2px); border-color:var(--accent); box-shadow:0 0 0 3px var(--soft); }
 .reference-choice .choice-copy strong { font-size:17px; line-height:1.15; }
 .reference-choice .choice-copy small { white-space:normal; font-size:11px; line-height:1.45; letter-spacing:0; }

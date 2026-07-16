@@ -77,6 +77,17 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertIn(b"Generate reusable prompts", library_response.data)
         self.assertIn(b"Feedback workspace", library_response.data)
         self.assertLess(
+            library_response.data.index(b"Papers / proposals"),
+            library_response.data.index(b"Research ideas / meeting minutes"),
+        )
+        self.assertLess(
+            library_response.data.index(b"Research ideas / meeting minutes"),
+            library_response.data.index(b"Talks / presentations / slides"),
+        )
+        self.assertIn(b"reference-choice-paper-proposal-pi", library_response.data)
+        self.assertIn(b"reference-choice-meeting-research-pi", library_response.data)
+        self.assertIn(b"reference-choice-slides-talk-pi", library_response.data)
+        self.assertLess(
             library_response.data.index(b"Feedback workspace"),
             library_response.data.index(b"Model settings"),
         )
