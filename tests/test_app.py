@@ -19,6 +19,7 @@ from app import (
     split_review_text,
 )
 from docx import Document
+from PIL import Image
 from pptx import Presentation
 
 
@@ -722,6 +723,31 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertIn("foreach ($downloadModel in $models)", installer)
         self.assertIn("OLLAMA_MODEL=$model", installer)
         self.assertIn("Installed model(s): $($models -join ', ')", installer)
+        self.assertIn("promptly-icon.ico", installer)
+        self.assertIn("$shortcut.IconLocation", installer)
+
+    def test_promptly_icon_assets_are_valid_and_used_by_both_pages(self):
+        png_path = Path("static") / "promptly-icon.png"
+        ico_path = Path("static") / "promptly-icon.ico"
+        self.assertTrue(png_path.is_file())
+        self.assertTrue(ico_path.is_file())
+
+        with Image.open(png_path) as png:
+            self.assertEqual(png.size, (1024, 1024))
+            self.assertEqual(png.mode, "RGBA")
+            self.assertEqual(png.getpixel((0, 0))[3], 0)
+
+        with Image.open(ico_path) as icon:
+            self.assertEqual(icon.format, "ICO")
+            self.assertIn((16, 16), icon.ico.sizes())
+            self.assertIn((256, 256), icon.ico.sizes())
+
+        for path in ("/", "/prompt-library"):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, 200)
+                self.assertIn(b'rel="icon"', response.data)
+                self.assertIn(b'/static/promptly-icon.png', response.data)
 
     def test_rejects_wrong_file_type(self):
         response = self.client.post(

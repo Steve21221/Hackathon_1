@@ -131,6 +131,8 @@ try {
         "Mentor_Data",
         "raw_materials",
         "static",
+        "static\promptly-icon.ico",
+        "static\promptly-icon.png",
         "templates"
     )
     foreach ($requiredPath in $requiredPaths) {
@@ -240,6 +242,7 @@ if errorlevel 1 pause
     $shortcut.TargetPath = $runCommandPath
     $shortcut.WorkingDirectory = $InstallDirectory
     $shortcut.Description = "Start the local Promptly mentor-feedback website"
+    $shortcut.IconLocation = "$(Join-Path $InstallDirectory 'static\promptly-icon.ico'),0"
     $shortcut.Save()
 
     Write-Host "`nPromptly is installed successfully." -ForegroundColor Green

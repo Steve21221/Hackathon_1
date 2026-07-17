@@ -57,7 +57,7 @@ Any mentor can be deleted from **Modify a review style** after selecting their c
 
 ### Easy setup (recommended)
 
-The downloadable setup script installs Promptly in `%LOCALAPPDATA%\Promptly`, prepares its private Python environment, installs Ollama when needed, downloads the selected Qwen model and optional Phi-4 Mini model, and creates a **Promptly** desktop shortcut.
+The downloadable setup script installs Promptly in `%LOCALAPPDATA%\Promptly`, prepares its private Python environment, installs Ollama when needed, downloads the selected Qwen model and optional Phi-4 Mini model, and creates a branded **Promptly** desktop shortcut.
 
 1. On the repository page, select **Code**, then **Download ZIP**.
 2. Extract the ZIP file in Downloads. The setup script will be inside the extracted repository folder at `Hackathon_1-main\installer\Promptly-Setup.ps1`.
