@@ -11,6 +11,93 @@ function Write-Step([string]$Message) {
     Write-Host "`n==> $Message" -ForegroundColor Cyan
 }
 
+function Get-NormalizedPath([string]$Path) {
+    $expanded = [Environment]::ExpandEnvironmentVariables($Path)
+    if (-not [System.IO.Path]::IsPathRooted($expanded)) {
+        $expanded = Join-Path (Get-Location).Path $expanded
+    }
+    return [System.IO.Path]::GetFullPath($expanded).TrimEnd([char[]]@('\', '/'))
+}
+
+function Test-PathWithin([string]$Candidate, [string]$Parent) {
+    $candidatePath = Get-NormalizedPath $Candidate
+    $parentPath = Get-NormalizedPath $Parent
+    if ([string]::Equals($candidatePath, $parentPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $true
+    }
+    $prefix = $parentPath + [System.IO.Path]::DirectorySeparatorChar
+    return $candidatePath.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function Stop-PromptlyProcesses([string]$Directory) {
+    if (-not (Test-Path -LiteralPath $Directory -PathType Container)) {
+        return
+    }
+
+    $venvPath = Get-NormalizedPath (Join-Path $Directory ".venv")
+    $runScriptPath = Get-NormalizedPath (Join-Path $Directory "run_promptly.py")
+    $stoppedProcessIds = @()
+    $taskkill = Join-Path $env:SystemRoot "System32\taskkill.exe"
+    foreach ($process in @(Get-Process -Name "python", "pythonw" -ErrorAction SilentlyContinue)) {
+        $processPath = $null
+        try {
+            $processPath = $process.Path
+        }
+        catch {
+            continue
+        }
+        if ($processPath -and (Test-PathWithin $processPath $venvPath)) {
+            & $taskkill /PID $process.Id /T /F *> $null
+            $stoppedProcessIds += $process.Id
+        }
+    }
+
+    try {
+        $pythonProcesses = @(
+            Get-CimInstance Win32_Process -ErrorAction Stop |
+                Where-Object { $_.Name -in @("python.exe", "pythonw.exe") }
+        )
+        foreach ($process in $pythonProcesses) {
+            $runsPromptly = (
+                $process.CommandLine -and
+                $process.CommandLine.IndexOf($runScriptPath, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+            )
+            if ($runsPromptly -and $stoppedProcessIds -notcontains $process.ProcessId) {
+                Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
+                $stoppedProcessIds += $process.ProcessId
+            }
+        }
+    }
+    catch {
+        Write-Verbose "Command-line process inspection was unavailable: $($_.Exception.Message)"
+    }
+
+    if ($stoppedProcessIds.Count -gt 0) {
+        Start-Sleep -Milliseconds 750
+        Write-Host "Stopped existing Promptly process(es): $($stoppedProcessIds -join ', ')"
+    }
+}
+
+function Remove-ExistingPrivateEnvironment([string]$Directory) {
+    $venvPath = Join-Path $Directory ".venv"
+    if (-not (Test-Path -LiteralPath $venvPath)) {
+        return
+    }
+
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try {
+            Remove-Item -LiteralPath $venvPath -Recurse -Force -ErrorAction Stop
+            return
+        }
+        catch {
+            if ($attempt -eq 3) {
+                throw "Promptly could not replace its existing private Python environment. Close Promptly and any File Explorer window open inside $venvPath, then run setup again. $($_.Exception.Message)"
+            }
+            Start-Sleep -Milliseconds 750
+        }
+    }
+}
+
 function Test-PythonCommand([string]$Executable, [string[]]$Arguments = @()) {
     try {
         & $Executable @Arguments -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" *> $null
@@ -121,6 +208,12 @@ try {
         throw "The downloaded Promptly package could not be read."
     }
 
+    if (Test-Path -LiteralPath $InstallDirectory -PathType Container) {
+        Write-Step "Stopping an existing Promptly installation"
+        Stop-PromptlyProcesses $InstallDirectory
+        Remove-ExistingPrivateEnvironment $InstallDirectory
+    }
+
     New-Item -ItemType Directory -Path $InstallDirectory -Force | Out-Null
     Copy-Item -Path (Join-Path $sourceDirectory.FullName "*") -Destination $InstallDirectory -Recurse -Force
 
@@ -148,7 +241,7 @@ try {
     & $pythonExecutable @pythonArguments -m venv (Join-Path $InstallDirectory ".venv")
     $venvPython = Join-Path $InstallDirectory ".venv\Scripts\python.exe"
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path $venvPython)) {
-        throw "Promptly could not create its private Python environment."
+        throw "Promptly could not create its private Python environment. Close Promptly, temporarily pause any security software blocking $InstallDirectory, and run setup again."
     }
     & $venvPython -m pip install --disable-pip-version-check -r (Join-Path $InstallDirectory "requirements.txt")
     if ($LASTEXITCODE -ne 0) {

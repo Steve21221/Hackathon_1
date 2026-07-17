@@ -87,6 +87,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Downloads\Promptly-Se
 
 The setup needs internet access to download the code, Python packages, Ollama, and the model. After installation, feedback generation runs locally without an API key or per-token fee.
 
+Running setup again upgrades an existing installation in place. The installer stops only Promptly's private Python process, recreates its `.venv`, and preserves model settings, API keys, mentor libraries, uploaded references, generated outputs, Ollama, and downloaded models.
+
 The published setup downloads the `main` branch. Contributors testing a pull-request branch before it is merged can pass its name explicitly, for example:
 
 ```powershell

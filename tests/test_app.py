@@ -725,6 +725,10 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertIn("Installed model(s): $($models -join ', ')", installer)
         self.assertIn("promptly-icon.ico", installer)
         self.assertIn("$shortcut.IconLocation", installer)
+        self.assertIn("Stop-PromptlyProcesses $InstallDirectory", installer)
+        self.assertIn("Remove-ExistingPrivateEnvironment $InstallDirectory", installer)
+        self.assertIn("Stopping an existing Promptly installation", installer)
+        self.assertIn("could not replace its existing private Python environment", installer)
 
     def test_promptly_icon_assets_are_valid_and_used_by_both_pages(self):
         png_path = Path("static") / "promptly-icon.png"
