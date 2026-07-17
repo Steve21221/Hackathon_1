@@ -1,6 +1,7 @@
 param(
     [string]$InstallDirectory = "$env:LOCALAPPDATA\Promptly",
     [string]$ShortcutPath = "",
+    [switch]$KeepOllama,
     [switch]$Force
 )
 
@@ -47,6 +48,79 @@ function Test-PathWithin([string]$Candidate, [string]$Parent) {
     return $candidatePath.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)
 }
 
+function Get-DesktopPath {
+    $desktop = [Environment]::GetFolderPath("Desktop")
+    if (-not [string]::IsNullOrWhiteSpace($desktop)) {
+        return Get-NormalizedPath $desktop
+    }
+
+    $fallbacks = @()
+    if (-not [string]::IsNullOrWhiteSpace($env:OneDrive)) {
+        $fallbacks += Join-Path $env:OneDrive "Desktop"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+        $fallbacks += Join-Path $env:USERPROFILE "Desktop"
+    }
+    foreach ($fallback in $fallbacks) {
+        if (Test-Path -LiteralPath $fallback -PathType Container) {
+            return Get-NormalizedPath $fallback
+        }
+    }
+    if ($fallbacks.Count -gt 0) {
+        return Get-NormalizedPath $fallbacks[0]
+    }
+    throw "The Windows desktop folder could not be located. Pass -ShortcutPath explicitly."
+}
+
+function Assert-SafeRemovalPath([string]$Path, [string]$Label) {
+    $candidate = Get-NormalizedPath $Path
+    $protectedRoots = @(
+        [System.IO.Path]::GetPathRoot($candidate),
+        $env:USERPROFILE,
+        $env:LOCALAPPDATA,
+        $env:APPDATA,
+        $env:TEMP,
+        $env:SystemRoot,
+        $env:ProgramFiles,
+        ${env:ProgramFiles(x86)}
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+
+    foreach ($protectedRoot in $protectedRoots) {
+        if ((Test-SamePath $candidate $protectedRoot) -or
+            (Test-PathWithin $protectedRoot $candidate)) {
+            throw "Refusing to remove unsafe $Label path: $candidate"
+        }
+    }
+    return $candidate
+}
+
+function Remove-SafeDirectory([string]$Path, [string]$Label) {
+    $safePath = Assert-SafeRemovalPath $Path $Label
+    if (-not (Test-Path -LiteralPath $safePath)) {
+        return
+    }
+    if (Test-PathWithin (Get-Location).Path $safePath) {
+        Set-Location $env:TEMP
+    }
+
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try {
+            Remove-Item -LiteralPath $safePath -Recurse -Force -ErrorAction Stop
+            break
+        }
+        catch {
+            if ($attempt -eq 3) {
+                throw "Could not completely remove $Label at ${safePath}: $($_.Exception.Message)"
+            }
+            Start-Sleep -Milliseconds 750
+        }
+    }
+    if (Test-Path -LiteralPath $safePath) {
+        throw "$Label files could not be completely removed from $safePath."
+    }
+    Write-Host "Removed ${Label}: $safePath"
+}
+
 function Remove-OwnedShortcut([string]$Path, [string]$ExpectedTarget) {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
         return
@@ -58,7 +132,14 @@ function Remove-OwnedShortcut([string]$Path, [string]$ExpectedTarget) {
 
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($Path)
-    if ($shortcut.TargetPath -and (Test-SamePath $shortcut.TargetPath $ExpectedTarget)) {
+    $expectedDirectory = Split-Path -Parent $ExpectedTarget
+    $targetMatches = $shortcut.TargetPath -and (Test-SamePath $shortcut.TargetPath $ExpectedTarget)
+    $descriptionMatches = $shortcut.Description -eq "Start the local Promptly mentor-feedback website"
+    $workingDirectoryMatches = (
+        $shortcut.WorkingDirectory -and
+        (Test-SamePath $shortcut.WorkingDirectory $expectedDirectory)
+    )
+    if ($targetMatches -or ($descriptionMatches -and $workingDirectoryMatches)) {
         Remove-Item -LiteralPath $Path -Force
         Write-Host "Removed desktop shortcut: $Path"
     }
@@ -72,10 +153,21 @@ $localAppDataPath = Get-NormalizedPath $env:LOCALAPPDATA
 $userProfilePath = Get-NormalizedPath $env:USERPROFILE
 $ollamaProgramPath = Get-NormalizedPath (Join-Path $env:LOCALAPPDATA "Programs\Ollama")
 $ollamaModelPath = Get-NormalizedPath (Join-Path $env:USERPROFILE ".ollama")
+$ollamaLocalDataPath = Get-NormalizedPath (Join-Path $env:LOCALAPPDATA "Ollama")
+$ollamaRoamingDataPath = Get-NormalizedPath (Join-Path $env:APPDATA "Ollama")
+$customOllamaModelPath = $null
+if (-not $KeepOllama -and -not [string]::IsNullOrWhiteSpace($env:OLLAMA_MODELS)) {
+    $customOllamaModelPath = Assert-SafeRemovalPath $env:OLLAMA_MODELS "custom Ollama model"
+    if ((Test-Path -LiteralPath $customOllamaModelPath -PathType Container) -and
+        -not (Test-Path -LiteralPath (Join-Path $customOllamaModelPath "blobs") -PathType Container) -and
+        -not (Test-Path -LiteralPath (Join-Path $customOllamaModelPath "manifests") -PathType Container)) {
+        throw "Refusing to remove custom Ollama model path because it does not look like an Ollama model store: $customOllamaModelPath"
+    }
+}
 $driveRoot = Get-NormalizedPath ([System.IO.Path]::GetPathRoot($installPath))
 
 if ([string]::IsNullOrWhiteSpace($ShortcutPath)) {
-    $ShortcutPath = Join-Path ([Environment]::GetFolderPath("Desktop")) "Promptly.lnk"
+    $ShortcutPath = Join-Path (Get-DesktopPath) "Promptly.lnk"
 }
 $shortcutPathResolved = Get-NormalizedPath $ShortcutPath
 $runCommandPath = Get-NormalizedPath (Join-Path $installPath "Run-Promptly.cmd")
@@ -87,50 +179,59 @@ foreach ($unsafeTarget in $unsafeTargets) {
     }
 }
 
-$protectedOllamaPaths = @($ollamaProgramPath, $ollamaModelPath)
-foreach ($protectedPath in $protectedOllamaPaths) {
-    if ((Test-PathWithin $protectedPath $installPath) -or (Test-PathWithin $installPath $protectedPath)) {
-        throw "Refusing to remove a path that overlaps protected Ollama data: $installPath"
+$separateOllamaPaths = @($ollamaProgramPath, $ollamaModelPath, $ollamaLocalDataPath)
+foreach ($ollamaPath in $separateOllamaPaths) {
+    if ((Test-PathWithin $ollamaPath $installPath) -or (Test-PathWithin $installPath $ollamaPath)) {
+        throw "Refusing to remove a Promptly path that overlaps separate Ollama data: $installPath"
     }
 }
 
-if (-not (Test-Path -LiteralPath $installPath -PathType Container)) {
-    Remove-OwnedShortcut $shortcutPathResolved $runCommandPath
-    Write-Host "Promptly is not installed at $installPath. Nothing was removed."
-    Write-Host "Ollama and downloaded models remain installed."
-    exit 0
-}
-
-$installMarker = Join-Path $installPath ".promptly-install"
-$legacyMarkers = @(
-    "app.py",
-    "run_promptly.py",
-    "Run-Promptly.cmd",
-    "requirements.txt",
-    "static",
-    "templates"
-)
-$hasLegacyMarkers = $true
-foreach ($marker in $legacyMarkers) {
-    if (-not (Test-Path -LiteralPath (Join-Path $installPath $marker))) {
-        $hasLegacyMarkers = $false
-        break
+$promptlyInstalled = Test-Path -LiteralPath $installPath -PathType Container
+if ($promptlyInstalled) {
+    $installMarker = Join-Path $installPath ".promptly-install"
+    $legacyMarkers = @(
+        "app.py",
+        "run_promptly.py",
+        "Run-Promptly.cmd",
+        "requirements.txt",
+        "static",
+        "templates"
+    )
+    $hasLegacyMarkers = $true
+    foreach ($marker in $legacyMarkers) {
+        if (-not (Test-Path -LiteralPath (Join-Path $installPath $marker))) {
+            $hasLegacyMarkers = $false
+            break
+        }
+    }
+    if (-not (Test-Path -LiteralPath $installMarker -PathType Leaf) -and -not $hasLegacyMarkers) {
+        throw "Refusing to remove $installPath because it does not look like a Promptly installation."
     }
 }
-if (-not (Test-Path -LiteralPath $installMarker -PathType Leaf) -and -not $hasLegacyMarkers) {
-    throw "Refusing to remove $installPath because it does not look like a Promptly installation."
+else {
+    Write-Host "Promptly is not installed at $installPath."
 }
 
-Write-Host "Promptly website uninstaller" -ForegroundColor Green
+Write-Host "Promptly and local-model uninstaller" -ForegroundColor Green
 Write-Host "Website installation: $installPath"
 Write-Host ""
 Write-Warning "This removes Promptly's website files, private Python environment, settings, mentor libraries, uploaded references, and generated outputs."
-Write-Host "Ollama will NOT be uninstalled." -ForegroundColor Green
-Write-Host "Downloaded models under $ollamaModelPath will NOT be removed." -ForegroundColor Green
+if ($KeepOllama) {
+    Write-Host "Ollama and its downloaded models will be kept because -KeepOllama was specified." -ForegroundColor Yellow
+}
+else {
+    Write-Warning "This also uninstalls Ollama and permanently deletes EVERY downloaded Ollama model, including Qwen, Phi, and models not installed by Promptly."
+    Write-Host "Ollama program: $ollamaProgramPath"
+    Write-Host "Ollama models and user data: $ollamaModelPath"
+    if ($customOllamaModelPath) {
+        Write-Host "Custom Ollama model directory: $customOllamaModelPath"
+    }
+}
 
 if (-not $Force) {
-    $confirmation = Read-Host "Type UNINSTALL to remove Promptly"
-    if ($confirmation -cne "UNINSTALL") {
+    $confirmationText = if ($KeepOllama) { "UNINSTALL" } else { "UNINSTALL ALL" }
+    $confirmation = Read-Host "Type $confirmationText to continue"
+    if ($confirmation -cne $confirmationText) {
         Write-Host "Uninstall cancelled. Nothing was removed."
         exit 0
     }
@@ -182,16 +283,81 @@ else {
     Write-Host "Promptly was not running."
 }
 
+if (-not $KeepOllama) {
+    Write-Step "Stopping Ollama and local model processes"
+    $stoppedOllamaProcessIds = @()
+    foreach ($process in @(Get-Process -ErrorAction SilentlyContinue)) {
+        $processPath = $null
+        try {
+            $processPath = $process.Path
+        }
+        catch {
+            continue
+        }
+        if ($processPath -and (Test-PathWithin $processPath $ollamaProgramPath)) {
+            & $taskkill /PID $process.Id /T /F *> $null
+            $stoppedOllamaProcessIds += $process.Id
+        }
+    }
+    if ($stoppedOllamaProcessIds.Count -gt 0) {
+        Start-Sleep -Milliseconds 750
+        Write-Host "Stopped Ollama process(es): $($stoppedOllamaProcessIds -join ', ')"
+    }
+    else {
+        Write-Host "Ollama was not running."
+    }
+
+    $ollamaUninstaller = Join-Path $ollamaProgramPath "unins000.exe"
+    if (Test-Path -LiteralPath $ollamaUninstaller -PathType Leaf) {
+        Write-Step "Running the Ollama application uninstaller"
+        try {
+            $uninstallProcess = Start-Process `
+                -FilePath $ollamaUninstaller `
+                -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" `
+                -WindowStyle Hidden `
+                -Wait `
+                -PassThru
+            if ($uninstallProcess.ExitCode -ne 0) {
+                Write-Warning "Ollama's application uninstaller returned exit code $($uninstallProcess.ExitCode). Residual files will still be removed."
+            }
+        }
+        catch {
+            Write-Warning "Ollama's application uninstaller could not run. Residual files will still be removed: $($_.Exception.Message)"
+        }
+    }
+}
+
 Write-Step "Removing Promptly website files"
 Remove-OwnedShortcut $shortcutPathResolved $runCommandPath
-if (Test-PathWithin (Get-Location).Path $installPath) {
-    Set-Location $env:TEMP
+if ($promptlyInstalled) {
+    Remove-SafeDirectory $installPath "Promptly installation"
 }
-Remove-Item -LiteralPath $installPath -Recurse -Force
-if (Test-Path -LiteralPath $installPath) {
-    throw "Promptly files could not be completely removed from $installPath."
+
+if (-not $KeepOllama) {
+    Write-Step "Removing Ollama, downloaded models, and local data"
+    $ollamaRemovalTargets = @(
+        @{ Path = $ollamaProgramPath; Label = "Ollama application" },
+        @{ Path = $ollamaLocalDataPath; Label = "Ollama local data" },
+        @{ Path = $ollamaRoamingDataPath; Label = "Ollama roaming data" },
+        @{ Path = $ollamaModelPath; Label = "Ollama models and user data" }
+    )
+    if ($customOllamaModelPath -and -not (Test-SamePath $customOllamaModelPath $ollamaModelPath)) {
+        $ollamaRemovalTargets += @{
+            Path = $customOllamaModelPath
+            Label = "custom Ollama model directory"
+        }
+    }
+    foreach ($target in $ollamaRemovalTargets) {
+        Remove-SafeDirectory $target.Path $target.Label
+    }
+    [Environment]::SetEnvironmentVariable("OLLAMA_MODELS", $null, "User")
+    Remove-Item Env:OLLAMA_MODELS -ErrorAction SilentlyContinue
 }
 
 Write-Host "`nPromptly was uninstalled successfully." -ForegroundColor Green
-Write-Host "Ollama is still installed at: $ollamaProgramPath"
-Write-Host "Downloaded models are still stored at: $ollamaModelPath"
+if ($KeepOllama) {
+    Write-Host "Ollama and downloaded models were kept." -ForegroundColor Yellow
+}
+else {
+    Write-Host "Ollama and all downloaded Ollama models were removed." -ForegroundColor Green
+}

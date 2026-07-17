@@ -107,15 +107,21 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Downloads\Hackathon_1
 
 When Promptly is opened from its desktop shortcut, closing the final Promptly browser tab stops its private local Python service automatically after a short delay. Refreshing the page or moving between the feedback and prompt-library pages does not stop the service. You can still press `Ctrl+C` in the Promptly terminal window to stop it immediately.
 
-### Uninstall Promptly without removing Ollama
+### Uninstall Promptly, Ollama, and local models
 
-Use [`installer/Promptly-Uninstall.ps1`](installer/Promptly-Uninstall.ps1) to remove only the Promptly website. Close Promptly, download the uninstaller, and run:
+Use [`installer/Promptly-Uninstall.ps1`](installer/Promptly-Uninstall.ps1) for a complete removal. Close Promptly, download the uninstaller, and run:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Downloads\Promptly-Uninstall.ps1"
 ```
 
-The script asks you to type `UNINSTALL`, stops only Promptly's Python processes, removes the Promptly desktop shortcut, and deletes `%LOCALAPPDATA%\Promptly`. This also deletes Promptly settings, mentor libraries, uploaded references, and generated outputs. It does **not** uninstall Ollama, stop the Ollama server, or delete models stored under `%USERPROFILE%\.ollama`.
+The script asks you to type `UNINSTALL ALL`, stops Promptly and Ollama processes, runs Ollama's application uninstaller, and removes the Promptly desktop shortcut. It permanently deletes `%LOCALAPPDATA%\Promptly`, the Ollama application and local data, `%USERPROFILE%\.ollama`, every downloaded Ollama model (including Qwen, Phi, and models not installed by Promptly), and a custom model directory configured through `OLLAMA_MODELS`. Promptly settings, API keys, mentor libraries, uploaded references, and generated outputs are also deleted.
+
+To remove Promptly while intentionally keeping Ollama and its models, add `-KeepOllama` and type `UNINSTALL` instead:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Downloads\Promptly-Uninstall.ps1" -KeepOllama
+```
 
 ### Manual setup
 

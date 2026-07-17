@@ -221,6 +221,7 @@ try {
         "app.py",
         "run_promptly.py",
         "requirements.txt",
+        "installer\Promptly-Uninstall.ps1",
         "Mentor_Data",
         "raw_materials",
         "static",
