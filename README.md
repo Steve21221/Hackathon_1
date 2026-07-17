@@ -55,7 +55,7 @@ Any mentor can be deleted from **Modify a review style** after selecting their c
 
 ### Easy setup (recommended)
 
-The downloadable setup script installs Promptly in `%LOCALAPPDATA%\Promptly`, prepares its private Python environment, installs Ollama when needed, downloads the selected local model or model pair, and creates a **Promptly** desktop shortcut.
+The downloadable setup script installs Promptly in `%LOCALAPPDATA%\Promptly`, prepares its private Python environment, installs Ollama when needed, downloads the selected Qwen model and optional Phi-4 Mini model, and creates a **Promptly** desktop shortcut.
 
 1. On the repository page, select **Code**, then **Download ZIP**.
 2. Extract the ZIP file in Downloads. The setup script will be inside the extracted repository folder at `Hackathon_1-main\installer\Promptly-Setup.ps1`.
@@ -73,13 +73,13 @@ Alternatively, download only [`installer/Promptly-Setup.ps1`](installer/Promptly
 powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Downloads\Promptly-Setup.ps1"
 ```
 
-4. Choose a model based on the computer:
+4. First choose one Qwen model based on the computer:
 
    - Qwen 3.5 4B: approximately 3.4 GB; start here for a computer with 16 GB RAM.
-   - Phi-4 Mini: approximately 2.5 GB; faster responses with somewhat less comprehensive scientific critique.
-   - Qwen 3.5 4B + Phi-4 Mini: approximately 5.9 GB; installs both so users can switch between quality and speed in **Model settings**.
    - Qwen 3.5 9B: approximately 6.6 GB; recommended default for 32 GB RAM.
    - Qwen 3.5 27B: approximately 17 GB; strongest offered setup option, recommended for 64 GB RAM.
+
+   The installer then separately asks whether to add Phi-4 Mini (approximately 2.5 GB) as a faster optional model. If installed, users can switch between the selected Qwen model and Phi-4 Mini in **Model settings**.
 
 5. After setup, double-click **Promptly** on the desktop. Keep the opened command window running while using the website; close it or press `Ctrl+C` to stop Promptly.
 

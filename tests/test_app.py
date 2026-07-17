@@ -647,11 +647,14 @@ class PromptlyTestCase(unittest.TestCase):
         home = self.client.get("/")
         self.assertIn(b'<option value="phi4-mini" selected>', home.data)
 
-    def test_installer_can_download_phi_or_both_recommended_models(self):
+    def test_installer_selects_qwen_then_optionally_adds_phi(self):
         installer = (Path("installer") / "Promptly-Setup.ps1").read_text(encoding="utf-8")
 
-        self.assertIn('"4" { @("phi4-mini") }', installer)
-        self.assertIn('"5" { @("qwen3.5:4b", "phi4-mini") }', installer)
+        self.assertIn('Read-Host "Enter 1, 2, or 3"', installer)
+        self.assertIn('$models = @($model)', installer)
+        self.assertIn('Also install Phi-4 Mini so you can switch models in the website?', installer)
+        self.assertIn('$models += "phi4-mini"', installer)
+        self.assertNotIn('Enter 1, 2, 3, 4, or 5', installer)
         self.assertIn("foreach ($downloadModel in $models)", installer)
         self.assertIn("OLLAMA_MODEL=$model", installer)
         self.assertIn("Installed model(s): $($models -join ', ')", installer)
