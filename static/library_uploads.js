@@ -177,11 +177,16 @@
     var content = panel.querySelector('[data-feedback-content]');
     var message = working && working.querySelector('[data-working-message]');
     var detail = working && working.querySelector('[data-feedback-working-detail]');
+    var citedLiterature = document.querySelector('[data-cited-literature]');
     var input = form && form.querySelector('[data-feedback-file-input]');
     var file = input && input.files && input.files.length ? input.files[0] : null;
     var timingMessage = feedbackTimingMessage(file);
     if (content) content.hidden = true;
     if (working) working.hidden = false;
+    if (citedLiterature) {
+      citedLiterature.setAttribute('data-hidden-before-working', citedLiterature.hidden ? 'true' : 'false');
+      citedLiterature.hidden = true;
+    }
     if (detail) detail.textContent = timingMessage.title + ' ' + timingMessage.detail;
     panel.classList.add('is-working');
     panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -196,8 +201,13 @@
     if (!panel) return;
     var working = panel.querySelector('[data-feedback-working]');
     var content = panel.querySelector('[data-feedback-content]');
+    var citedLiterature = document.querySelector('[data-cited-literature]');
     if (working) working.hidden = true;
     if (content) content.hidden = false;
+    if (citedLiterature && citedLiterature.hasAttribute('data-hidden-before-working')) {
+      citedLiterature.hidden = citedLiterature.getAttribute('data-hidden-before-working') === 'true';
+      citedLiterature.removeAttribute('data-hidden-before-working');
+    }
     panel.classList.remove('is-working');
   }
 
@@ -282,6 +292,39 @@
       .replace(/"/g, '&quot;');
   }
 
+  function renderCitedLiterature(data) {
+    var block = document.querySelector('[data-cited-literature]');
+    if (!block) return;
+    var enabled = Boolean(data && data.literature_search_enabled);
+    var sources = data && Array.isArray(data.cited_literature_sources)
+      ? data.cited_literature_sources
+      : [];
+    var list = block.querySelector('[data-cited-literature-list]');
+    var empty = block.querySelector('[data-cited-literature-empty]');
+    var count = block.querySelector('[data-cited-literature-count]');
+    block.hidden = !enabled;
+    if (count) count.textContent = sources.length + ' cited';
+    if (list) {
+      list.textContent = '';
+      sources.forEach(function (source) {
+        var item = document.createElement('li');
+        var link = document.createElement('a');
+        var metadata = document.createElement('span');
+        link.href = source.url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = source.title || source.url;
+        metadata.textContent = (source.database || 'Scholarly index') +
+          ' \u00b7 Source ' + (source.citation_number || '');
+        item.appendChild(link);
+        item.appendChild(metadata);
+        list.appendChild(item);
+      });
+      list.hidden = !sources.length;
+    }
+    if (empty) empty.hidden = Boolean(sources.length);
+  }
+
   function renderFeedbackResult(data) {
     var panel = document.querySelector('[data-feedback-panel]');
     var content = panel && panel.querySelector('[data-feedback-content]');
@@ -298,6 +341,7 @@
     content.querySelector('[data-feedback-mentor]').textContent = 'Feedback from ' + (data.mentor_name || 'mentor');
     content.querySelector('[data-feedback-filename]').textContent = data.filename || '';
     content.querySelector('[data-feedback-answer]').innerHTML = data.output_html || escapeHtml(data.output || '');
+    renderCitedLiterature(data);
     if (subtitle) subtitle.textContent = data.filename ? ('Reviewing ' + data.filename) : 'Your feedback will appear here after an upload.';
     panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }

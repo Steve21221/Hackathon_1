@@ -152,6 +152,22 @@
           {% endif %}
         </div>
       </div>
+      <aside class="cited-literature" data-cited-literature {% if not literature_search_enabled %}hidden{% endif %} aria-live="polite">
+        <div class="cited-literature-heading">
+          <div><span class="section-kicker">Research checked</span><h3>Scholarly articles cited</h3></div>
+          <span class="cited-literature-count" data-cited-literature-count>{{ cited_literature_sources|length }} cited</span>
+        </div>
+        <p class="cited-literature-intro">These are the papers explicitly linked in this feedback.</p>
+        <ul data-cited-literature-list {% if not cited_literature_sources %}hidden{% endif %}>
+          {% for source in cited_literature_sources %}
+            <li>
+              <a href="{{ source.url }}" target="_blank" rel="noopener noreferrer">{{ source.title }}</a>
+              <span>{{ source.database }} &middot; Source {{ source.citation_number }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+        <p class="cited-literature-empty" data-cited-literature-empty {% if cited_literature_sources %}hidden{% endif %}>No scholarly article was explicitly cited in this response. Try regenerating the feedback or use a more specific document title.</p>
+      </aside>
     </section>
     </div>
 

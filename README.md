@@ -18,6 +18,8 @@ Promptly calibrates response-time estimates separately for each selected model a
 
 Feedback forms include an optional **Search scholarly literature** control. When enabled, Promptly derives a compact topic query from the uploaded document, searches Crossref and PubMed, and supplies up to six related scholarly records to the selected model. Available abstracts and bibliographic metadata are bounded before they enter the prompt, and the model is instructed to cite literature-derived claims with clickable DOI or PubMed links. Users do not need to find or paste URLs.
 
+After feedback is generated, a **Scholarly articles cited** block lists only papers whose exact links appear in that response. If the search ran but the model cited no retrieved paper, the block says so explicitly instead of implying that search results were used.
+
 This is controlled academic-index research, not unrestricted web browsing. Promptly warns the model that a title or metadata record alone is not scientific evidence, distinguishes papers suggested for future reading from evidence used in feedback, and asks it not to invent citations. Search results can still be incomplete or imperfect, so users should verify important claims in the linked paper.
 
 When automatic search is enabled, only a short derived topic query is sent to Crossref and the U.S. National Library of Medicine's PubMed service. With local Ollama, the uploaded document, retrieved metadata, and generated feedback remain on the user's computer. With OpenAI or Claude selected, extracted document content and literature results are also sent to that configured API provider. Promptly does not save the query or literature results.

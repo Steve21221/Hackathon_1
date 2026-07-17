@@ -11,6 +11,7 @@ from app import (
     app,
     build_feedback_prompt,
     call_model,
+    cited_literature_sources,
     derive_literature_query,
     extract_generated_prompt,
     feedback_timing_profile,
@@ -69,6 +70,7 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertEqual(response.data.count(b"data-feedback-file-selection"), 3)
         self.assertEqual(response.data.count(b"data-remove-feedback-file"), 3)
         self.assertEqual(response.data.count(b"data-literature-search-toggle"), 3)
+        self.assertIn(b"data-cited-literature", response.data)
         self.assertNotIn(b"web_source_urls", response.data)
 
     def test_upload_script_supports_removing_pending_files(self):
@@ -84,6 +86,8 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertIn("Calibrating\\u2026", script)
         self.assertIn("Estimated response time:", script)
         self.assertIn("feedback_timing", Path("app.py").read_text(encoding="utf-8"))
+        self.assertIn("renderCitedLiterature", script)
+        self.assertIn("data-cited-literature-list", script)
         self.assertNotIn("data-web-source-urls", script)
 
     def test_feedback_timing_calibrates_separately_for_each_model(self):
@@ -711,10 +715,56 @@ class PromptlyTestCase(unittest.TestCase):
                     "title": "Research reference",
                     "url": "https://doi.org/10.1000/test",
                     "database": "Crossref",
+                    "citation_number": 1,
+                }
+            ],
+        )
+        self.assertTrue(response.get_json()["literature_search_enabled"])
+        self.assertEqual(
+            response.get_json()["cited_literature_sources"],
+            [
+                {
+                    "title": "Research reference",
+                    "url": "https://doi.org/10.1000/test",
+                    "database": "Crossref",
+                    "citation_number": 1,
                 }
             ],
         )
         self.assertEqual(response.get_json()["literature_query"], "nanomesh wearable sensor")
+
+    @patch("app.call_model", return_value="Evidence [Source 1](https://doi.org/10.1000/test)")
+    @patch("app.search_academic_literature")
+    def test_server_rendered_feedback_shows_cited_article_block(self, mock_search, _mock_model):
+        mock_search.return_value = (
+            "wearable sensor",
+            [
+                {
+                    "title": "Wearable sensor validation",
+                    "url": "https://doi.org/10.1000/test",
+                    "text": "Abstract: Relevant evidence.",
+                    "database": "PubMed",
+                    "doi": "10.1000/test",
+                }
+            ],
+        )
+
+        response = self.client.post(
+            "/feedback",
+            data={
+                "content_type": "research-ideas",
+                "mentor_id": "dr-nanshu-lu",
+                "use_literature_search": "1",
+                "file": (BytesIO(b"Wearable sensor validation concept"), "idea.txt"),
+            },
+            content_type="multipart/form-data",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"Scholarly articles cited", response.data)
+        self.assertIn(b"Wearable sensor validation", response.data)
+        self.assertIn(b"https://doi.org/10.1000/test", response.data)
+        self.assertIn(b"1 cited", response.data)
 
     @patch("app.search_academic_literature")
     def test_feedback_does_not_search_literature_without_opt_in(self, mock_search):
@@ -837,6 +887,37 @@ class PromptlyTestCase(unittest.TestCase):
             search_academic_literature(
                 "Stretchable cardiac sensor validation with motion artifact reduction"
             )
+
+    def test_cited_literature_list_includes_only_links_used_in_feedback(self):
+        sources = [
+            {
+                "title": "Uncited paper",
+                "url": "https://doi.org/10.1000/uncited",
+                "database": "Crossref",
+            },
+            {
+                "title": "Cited paper",
+                "url": "https://doi.org/10.1000/cited",
+                "database": "PubMed",
+            },
+        ]
+
+        cited = cited_literature_sources(
+            "The result agrees with [Source 2](https://doi.org/10.1000/cited).",
+            sources,
+        )
+
+        self.assertEqual(
+            cited,
+            [
+                {
+                    "title": "Cited paper",
+                    "url": "https://doi.org/10.1000/cited",
+                    "database": "PubMed",
+                    "citation_number": 2,
+                }
+            ],
+        )
 
     def test_settings_api_saves_provider_choice(self):
         response = self.client.post(
@@ -1142,6 +1223,21 @@ $$p_{max} \approx 3 \times 10^{-4}.$$
         rendered = render_markdown_html("The first option costs $5 and the second costs $10.")
 
         self.assertIn("$5 and the second costs $10", rendered)
+
+    def test_feedback_markdown_repairs_orphan_colon_and_preserves_engineering_notation(self):
+        feedback = (
+            "\": Specify pressure ranges (e.g., 0\u20131 kPa), capacitance change metrics "
+            "(%\u0394C/C\u2080 per unit stress), and comparison targets "
+            "(e.g., \u201cvs. standard CPS with X% decay at Y Pa\u201d)."
+        )
+
+        rendered = render_markdown_html(feedback)
+
+        self.assertIn("<li>Specify pressure ranges", rendered)
+        self.assertIn("0\u20131 kPa", rendered)
+        self.assertIn("%\u0394C/C\u2080 per unit stress", rendered)
+        self.assertIn("\u201cvs. standard CPS with X% decay at Y Pa\u201d", rendered)
+        self.assertNotIn("\": Specify", rendered)
 
     def test_mentor_style_prompts_are_available_for_all_three_modes(self):
         research_prompt = load_mentor_prompt("dr-nanshu-lu", "research-ideas")
