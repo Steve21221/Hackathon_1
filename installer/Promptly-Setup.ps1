@@ -174,21 +174,24 @@ try {
         }
     }
 
-    Write-Step "Choose the local reasoning model"
+    Write-Step "Choose the Qwen reasoning model"
     Write-Host "1. Qwen 3.5 4B  - about 3.4 GB; best scientific critique on laptop hardware"
     Write-Host "2. Qwen 3.5 9B  - about 6.6 GB; recommended for 32 GB RAM (default)"
     Write-Host "3. Qwen 3.5 27B - about 17 GB; recommended for 64 GB RAM"
-    Write-Host "4. Phi-4 Mini     - about 2.5 GB; faster responses on laptop hardware"
-    Write-Host "5. Qwen 4B + Phi - about 5.9 GB; install both and switch in the website"
-    $choice = Read-Host "Enter 1, 2, 3, 4, or 5"
-    $models = @(switch ($choice) {
-        "1" { @("qwen3.5:4b") }
-        "3" { @("qwen3.5:27b") }
-        "4" { @("phi4-mini") }
-        "5" { @("qwen3.5:4b", "phi4-mini") }
-        default { @("qwen3.5:9b") }
-    })
-    $model = $models[0]
+    $choice = Read-Host "Enter 1, 2, or 3"
+    $model = switch ($choice) {
+        "1" { "qwen3.5:4b" }
+        "3" { "qwen3.5:27b" }
+        default { "qwen3.5:9b" }
+    }
+    $models = @($model)
+
+    Write-Host ""
+    Write-Host "Optional: Phi-4 Mini is about 2.5 GB and provides faster responses on laptop hardware."
+    $installPhi = Read-Host "Also install Phi-4 Mini so you can switch models in the website? (y/N)"
+    if ($installPhi -match '^(?i:y|yes)$') {
+        $models += "phi4-mini"
+    }
 
     Write-Step "Downloading selected local model(s)"
     Write-Host "This is the largest part of setup and may take a while."
