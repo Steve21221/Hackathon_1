@@ -12,6 +12,8 @@ Feedback uploads are read in memory and are not saved by the website. The maximu
 
 When local Ollama is selected, Promptly can extract up to approximately 120,000 characters from a feedback file. Long reviews are divided into at most three bounded sections and synthesized into one final mentor response. Local requests use a dynamically sized context, concise output budgets, and non-thinking generation so laptop-class hardware responds substantially faster. OpenAI, Claude, and demo mode retain the 100,000-character extraction limit.
 
+Promptly calibrates response-time estimates separately for each selected model and computer. The first successful review displays **Calibrating...** while Promptly measures the request. Later file selections show an estimated response-time range based on that model's recent local history and the selected document size. Up to eight measurements per model are stored locally in `model_performance.json`; uploaded document contents are not stored in the timing history.
+
 ## Build a PI-style prompt library
 
 The feedback workspace is the homepage. Use the boxed **Modify a review style** link to open the separate `/prompt-library` workspace, where you can upload prior PI comments or examples in any of these groups:

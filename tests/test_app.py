@@ -12,7 +12,9 @@ from app import (
     build_feedback_prompt,
     call_model,
     extract_generated_prompt,
+    feedback_timing_profile,
     load_mentor_prompt,
+    record_feedback_performance,
     render_markdown_html,
     split_review_text,
 )
@@ -23,6 +25,8 @@ from pptx import Presentation
 class PromptlyTestCase(unittest.TestCase):
     def setUp(self):
         os.environ.pop("MODEL_PROVIDER", None)
+        os.environ.pop("OLLAMA_BASE_URL", None)
+        os.environ.pop("OLLAMA_MODEL", None)
         os.environ.pop("OPENAI_API_KEY", None)
         os.environ.pop("OPENAI_MODEL", None)
         os.environ.pop("ANTHROPIC_API_KEY", None)
@@ -31,10 +35,12 @@ class PromptlyTestCase(unittest.TestCase):
         self.original_output_directory = app.config["OUTPUT_DIR"]
         self.original_mentor_library_directory = app.config["MENTOR_LIBRARY_DIR"]
         self.original_settings_path = app.config.get("SETTINGS_PATH")
+        self.original_performance_path = app.config.get("PERFORMANCE_PATH")
         self.output_temp = tempfile.TemporaryDirectory()
         app.config["OUTPUT_DIR"] = Path(self.output_temp.name) / "outputs"
         app.config["MENTOR_LIBRARY_DIR"] = Path(self.output_temp.name) / "mentor_files"
         app.config["SETTINGS_PATH"] = Path(self.output_temp.name) / "user_settings.json"
+        app.config["PERFORMANCE_PATH"] = Path(self.output_temp.name) / "model_performance.json"
         self.client = app.test_client()
 
     def tearDown(self):
@@ -42,6 +48,8 @@ class PromptlyTestCase(unittest.TestCase):
         app.config["MENTOR_LIBRARY_DIR"] = self.original_mentor_library_directory
         if self.original_settings_path is not None:
             app.config["SETTINGS_PATH"] = self.original_settings_path
+        if self.original_performance_path is not None:
+            app.config["PERFORMANCE_PATH"] = self.original_performance_path
         self.output_temp.cleanup()
 
     def test_home_page_has_three_feedback_categories(self):
@@ -66,6 +74,58 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertIn("input.value = '';", script)
         self.assertIn("data-restore-defaults-form", script)
         self.assertIn("downloaded models stay unchanged", script)
+        self.assertIn("Calibrating\\u2026", script)
+        self.assertIn("Estimated response time:", script)
+        self.assertIn("feedback_timing", Path("app.py").read_text(encoding="utf-8"))
+
+    def test_feedback_timing_calibrates_separately_for_each_model(self):
+        os.environ["MODEL_PROVIDER"] = "ollama"
+        os.environ["OLLAMA_MODEL"] = "qwen3.5:9b"
+
+        self.assertEqual(feedback_timing_profile()["state"], "calibrating")
+        for index in range(10):
+            record_feedback_performance(
+                provider="ollama",
+                file_bytes=1_000 + index,
+                extracted_chars=2_000 + index,
+                elapsed_seconds=60 + index,
+            )
+
+        calibrated = feedback_timing_profile()
+        self.assertEqual(calibrated["state"], "calibrated")
+        self.assertEqual(calibrated["model"], "qwen3.5:9b")
+        self.assertEqual(calibrated["sample_count"], 8)
+        self.assertGreater(calibrated["average_seconds"], 60)
+        self.assertTrue(Path(app.config["PERFORMANCE_PATH"]).is_file())
+
+        os.environ["OLLAMA_MODEL"] = "phi4-mini"
+        phi_profile = feedback_timing_profile()
+        self.assertEqual(phi_profile["state"], "calibrating")
+        self.assertEqual(phi_profile["model"], "phi4-mini")
+
+    @patch("app.call_model", return_value="Measured mentor feedback")
+    def test_successful_feedback_request_completes_calibration(self, _mock_model):
+        os.environ["MODEL_PROVIDER"] = "ollama"
+        os.environ["OLLAMA_MODEL"] = "qwen3.5:4b"
+        home = self.client.get("/")
+        self.assertIn(b'"state": "calibrating"', home.data)
+
+        response = self.client.post(
+            "/feedback",
+            data={
+                "content_type": "research-ideas",
+                "mentor_id": "dr-nanshu-lu",
+                "file": (BytesIO(b"A measurable research idea."), "idea.txt"),
+            },
+            content_type="multipart/form-data",
+            headers={"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        timing = response.get_json()["feedback_timing"]
+        self.assertEqual(timing["state"], "calibrated")
+        self.assertEqual(timing["model"], "qwen3.5:4b")
+        self.assertEqual(timing["sample_count"], 1)
 
     def test_review_style_workspace_is_separate_from_home_page(self):
         response = self.client.get("/")

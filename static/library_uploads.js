@@ -1,4 +1,80 @@
 ﻿(function () {
+  var feedbackTiming = { state: 'calibrating', model: 'selected model', sample_count: 0 };
+  var timingData = document.getElementById('feedback-timing-data');
+  if (timingData) {
+    try {
+      feedbackTiming = JSON.parse(timingData.textContent || '{}');
+    } catch (_error) {
+      feedbackTiming = { state: 'calibrating', model: 'selected model', sample_count: 0 };
+    }
+  }
+
+  function formatTimeRange(lowSeconds, highSeconds) {
+    if (highSeconds < 60) {
+      var lowRounded = Math.max(5, Math.round(lowSeconds / 5) * 5);
+      var highRounded = Math.max(lowRounded + 5, Math.ceil(highSeconds / 5) * 5);
+      return lowRounded + '\u2013' + highRounded + ' seconds';
+    }
+    var lowMinutes = Math.max(1, Math.floor(lowSeconds / 60));
+    var highMinutes = Math.max(lowMinutes + 1, Math.ceil(highSeconds / 60));
+    return lowMinutes + '\u2013' + highMinutes + ' minutes';
+  }
+
+  function feedbackTimingMessage(file) {
+    var profile = feedbackTiming || {};
+    var model = profile.model || 'the selected model';
+    if (profile.state === 'instant') {
+      return {
+        title: 'Estimated response time: a few seconds',
+        detail: 'Demo mode does not make a model request.'
+      };
+    }
+    if (profile.state !== 'calibrated' || !profile.average_seconds || !profile.average_file_bytes) {
+      return {
+        title: 'Calibrating\u2026',
+        detail: 'Promptly is measuring ' + model + ' on this computer. Future requests will include an estimated response time.'
+      };
+    }
+
+    var fileBytes = file && file.size ? file.size : profile.average_file_bytes;
+    var sizeRatio = Math.max(0.05, fileBytes / profile.average_file_bytes);
+    var scale = 0.45 + (0.55 * Math.sqrt(sizeRatio));
+    scale = Math.max(0.55, Math.min(3.5, scale));
+    var predictedSeconds = Math.max(5, profile.average_seconds * scale);
+    var range = formatTimeRange(predictedSeconds * 0.75, predictedSeconds * 1.35);
+    var samples = profile.sample_count || 1;
+    return {
+      title: 'Estimated response time: ' + range,
+      detail: 'Based on ' + samples + ' completed ' + model + ' review' + (samples === 1 ? '' : 's') + ' on this computer.'
+    };
+  }
+
+  function updateFeedbackTimeEstimate(form, file) {
+    if (!form) return;
+    var estimate = form.querySelector('[data-feedback-time-estimate]');
+    var title = estimate && estimate.querySelector('[data-feedback-time-title]');
+    var detail = estimate && estimate.querySelector('[data-feedback-time-detail]');
+    if (!estimate) return;
+    estimate.hidden = !file;
+    if (!file) return;
+    var message = feedbackTimingMessage(file);
+    if (title) title.textContent = message.title;
+    if (detail) detail.textContent = message.detail;
+  }
+
+  function refreshFeedbackTimeEstimates() {
+    document.querySelectorAll('[data-feedback-file-input]').forEach(function (input) {
+      var file = input.files && input.files.length ? input.files[0] : null;
+      updateFeedbackTimeEstimate(input.closest('form'), file);
+    });
+  }
+
+  function setFeedbackTiming(profile) {
+    if (!profile || !profile.state) return;
+    feedbackTiming = profile;
+    refreshFeedbackTimeEstimates();
+  }
+
   function removeSelectedReferenceFile(input, removeIndex) {
     var files = (input._promptlyPendingFiles || []).slice();
     files.splice(removeIndex, 1);
@@ -59,6 +135,7 @@
     if (remove) {
       remove.setAttribute('aria-label', file ? 'Remove ' + file.name : 'Remove selected file');
     }
+    updateFeedbackTimeEstimate(form, file);
   }
 
   function currentWorkingLabel() {
@@ -93,17 +170,25 @@
     };
   }
 
-  function showFeedbackWorking(label) {
+  function showFeedbackWorking(label, form) {
     var panel = document.querySelector('[data-feedback-panel]');
     if (!panel) return function () {};
     var working = panel.querySelector('[data-feedback-working]');
     var content = panel.querySelector('[data-feedback-content]');
     var message = working && working.querySelector('[data-working-message]');
+    var detail = working && working.querySelector('[data-feedback-working-detail]');
+    var input = form && form.querySelector('[data-feedback-file-input]');
+    var file = input && input.files && input.files.length ? input.files[0] : null;
+    var timingMessage = feedbackTimingMessage(file);
     if (content) content.hidden = true;
     if (working) working.hidden = false;
+    if (detail) detail.textContent = timingMessage.title + ' ' + timingMessage.detail;
     panel.classList.add('is-working');
     panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    return animateWorkingLabel(message, label || currentWorkingLabel());
+    return animateWorkingLabel(
+      message,
+      feedbackTiming.state === 'calibrating' ? 'Calibrating' : (label || currentWorkingLabel())
+    );
   }
 
   function hideFeedbackWorking() {
@@ -755,7 +840,7 @@
           stopButtonAnim = animateWorkingLabel(button.querySelector('[data-working-message]'), label);
         }
         if (target === 'feedback') {
-          stopTargetAnim = showFeedbackWorking(label);
+          stopTargetAnim = showFeedbackWorking(label, form);
         } else if (target === 'prompts') {
           stopTargetAnim = showPromptsWorking(form, label);
         }
@@ -793,6 +878,10 @@
           if (!result.ok) {
             setPageError((result.data && result.data.error) || 'Something went wrong.');
             return;
+          }
+
+          if (result.data.feedback_timing) {
+            setFeedbackTiming(result.data.feedback_timing);
           }
 
           if (target === 'prompts') {
@@ -875,6 +964,9 @@
             return;
           }
           updateProviderLabels(result.data.provider_label, result.data.working_label, result.data.model_provider);
+          if (result.data.feedback_timing) {
+            setFeedbackTiming(result.data.feedback_timing);
+          }
           if (message) {
             message.hidden = false;
             message.classList.remove('error');

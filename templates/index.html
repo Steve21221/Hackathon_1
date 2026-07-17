@@ -109,6 +109,10 @@
                 <span class="selected-file-name" data-feedback-file-name></span>
                 <button class="feedback-file-remove" type="button" data-remove-feedback-file>Remove file</button>
               </div>
+              <p class="feedback-time-estimate" data-feedback-time-estimate hidden aria-live="polite">
+                <strong data-feedback-time-title>Calibrating&hellip;</strong>
+                <span data-feedback-time-detail></span>
+              </p>
               <label class="focus-label">Optional feedback focus<input type="text" name="focus" maxlength="500" placeholder="{{ type_info.focus }}"></label>
               <button type="submit" data-working-button data-default-label="Get mentor feedback">Get mentor feedback <span data-working-arrow>&rarr;</span></button>
             </form>
@@ -127,7 +131,7 @@
         <div class="working-state" data-feedback-working hidden>
           <div class="working-orb" aria-hidden="true"></div>
           <p data-working-message>Working</p>
-          <span>This can take a moment while the model reviews your upload.</span>
+          <span data-feedback-working-detail>This can take a moment while the model reviews your upload.</span>
         </div>
         <div data-feedback-content {% if not output %}class="feedback-content-empty"{% endif %}>
           {% if output %}
@@ -195,6 +199,7 @@
     </form>
   </dialog>
 
+  <script id="feedback-timing-data" type="application/json">{{ feedback_timing|tojson }}</script>
   <script src="{{ url_for('static', filename='library_uploads.js') }}"></script>
 </body>
 </html>

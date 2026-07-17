@@ -68,7 +68,9 @@ DELETE_REFERENCE_FILE_ERROR = "Please select an existing library file to delete.
 MENTOR_RUN_METADATA_FILENAME = ".mentor-run.json"
 PROJECT_ROOT = Path(__file__).resolve().parent
 SETTINGS_PATH = PROJECT_ROOT / "user_settings.json"
+PERFORMANCE_PATH = PROJECT_ROOT / "model_performance.json"
 app.config["SETTINGS_PATH"] = SETTINGS_PATH
+app.config["PERFORMANCE_PATH"] = PERFORMANCE_PATH
 SETTINGS_KEYS = (
     "MODEL_PROVIDER",
     "OLLAMA_BASE_URL",
@@ -88,6 +90,7 @@ OLLAMA_MODEL_OPTIONS = (
     ("qwen3.5:27b", "Qwen 3.5 27B — high-memory systems"),
 )
 OLLAMA_MODEL_VALUES = {value for value, _label in OLLAMA_MODEL_OPTIONS}
+MAX_PERFORMANCE_SAMPLES = 8
 
 
 def default_settings() -> dict[str, str]:
@@ -179,7 +182,7 @@ def current_provider() -> str:
     return provider
 
 
-def provider_status_label(provider: str | None = None) -> str:
+def active_model_name(provider: str | None = None) -> str:
     value = (provider or current_provider()).strip().lower()
     if value == "ollama":
         return os.getenv("OLLAMA_MODEL", "qwen3.5:9b").strip() or "qwen3.5:9b"
@@ -191,6 +194,123 @@ def provider_status_label(provider: str | None = None) -> str:
             or "claude-sonnet-4-5"
         )
     return "demo mode"
+
+
+def provider_status_label(provider: str | None = None) -> str:
+    return active_model_name(provider)
+
+
+def read_performance_data() -> dict[str, Any]:
+    path = Path(app.config.get("PERFORMANCE_PATH", PERFORMANCE_PATH))
+    if not path.is_file():
+        return {"version": 1, "profiles": {}}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {"version": 1, "profiles": {}}
+    if not isinstance(data, dict) or not isinstance(data.get("profiles"), dict):
+        return {"version": 1, "profiles": {}}
+    return data
+
+
+def performance_profile_key(provider: str | None = None) -> str:
+    value = (provider or current_provider()).strip().lower()
+    if value == "anthropic":
+        value = "claude"
+    return f"{value}:{active_model_name(value)}"
+
+
+def feedback_timing_profile(provider: str | None = None) -> dict[str, Any]:
+    value = (provider or current_provider()).strip().lower()
+    if value == "anthropic":
+        value = "claude"
+    model = active_model_name(value)
+    if value == "demo":
+        return {
+            "state": "instant",
+            "provider": value,
+            "model": model,
+            "sample_count": 0,
+        }
+
+    stored = read_performance_data().get("profiles", {}).get(
+        performance_profile_key(value), {}
+    )
+    raw_samples = stored.get("samples", []) if isinstance(stored, dict) else []
+    samples = [
+        sample
+        for sample in raw_samples
+        if isinstance(sample, dict)
+        and isinstance(sample.get("elapsed_seconds"), (int, float))
+        and sample["elapsed_seconds"] > 0
+        and isinstance(sample.get("file_bytes"), int)
+        and sample["file_bytes"] > 0
+    ]
+    if not samples:
+        return {
+            "state": "calibrating",
+            "provider": value,
+            "model": model,
+            "sample_count": 0,
+        }
+
+    return {
+        "state": "calibrated",
+        "provider": value,
+        "model": model,
+        "sample_count": len(samples),
+        "average_seconds": round(
+            sum(float(sample["elapsed_seconds"]) for sample in samples) / len(samples),
+            3,
+        ),
+        "average_file_bytes": round(
+            sum(int(sample["file_bytes"]) for sample in samples) / len(samples)
+        ),
+    }
+
+
+def record_feedback_performance(
+    *,
+    provider: str,
+    file_bytes: int,
+    extracted_chars: int,
+    elapsed_seconds: float,
+) -> None:
+    value = provider.strip().lower()
+    if value == "anthropic":
+        value = "claude"
+    if value == "demo" or file_bytes <= 0 or elapsed_seconds <= 0:
+        return
+
+    data = read_performance_data()
+    profiles = data.setdefault("profiles", {})
+    key = performance_profile_key(value)
+    profile = profiles.get(key)
+    if not isinstance(profile, dict):
+        profile = {}
+    samples = profile.get("samples", [])
+    if not isinstance(samples, list):
+        samples = []
+    samples = samples[-(MAX_PERFORMANCE_SAMPLES - 1) :]
+    samples.append(
+        {
+            "elapsed_seconds": round(max(0.05, elapsed_seconds), 3),
+            "file_bytes": int(file_bytes),
+            "extracted_chars": max(0, int(extracted_chars)),
+            "recorded_at": int(time.time()),
+        }
+    )
+    profiles[key] = {"samples": samples}
+    data["version"] = 1
+
+    path = Path(app.config.get("PERFORMANCE_PATH", PERFORMANCE_PATH))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    try:
+        temporary_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        temporary_path.replace(path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
 
 def working_label(provider: str | None = None) -> str:
@@ -1715,6 +1835,7 @@ def prompt_library_context(
         "model_provider": provider,
         "provider_label": provider_status_label(provider),
         "working_label": working_label(provider),
+        "feedback_timing": feedback_timing_profile(provider),
         "model_settings": public_settings(),
         "ollama_model_options": OLLAMA_MODEL_OPTIONS,
         "ollama_model_values": OLLAMA_MODEL_VALUES,
@@ -2083,6 +2204,7 @@ def update_settings():
             "model_provider": saved["MODEL_PROVIDER"],
             "provider_label": provider_status_label(saved["MODEL_PROVIDER"]),
             "working_label": working_label(saved["MODEL_PROVIDER"]),
+            "feedback_timing": feedback_timing_profile(saved["MODEL_PROVIDER"]),
         }
     )
 
@@ -2140,7 +2262,9 @@ def feedback():
         )
 
     try:
-        content = extract_text(uploaded_file.read(), extension)
+        request_started_at = time.perf_counter()
+        uploaded_bytes = uploaded_file.read()
+        content = extract_text(uploaded_bytes, extension)
         prompt = build_feedback_prompt(kind, filename, content, focus, mentor_id)
         demo_feedback = (
             f"## Demo feedback from {mentors[mentor_id]['name']}\n\n"
@@ -2150,6 +2274,16 @@ def feedback():
             "an OpenAI / Claude API key for live mentor feedback."
         )
         output = call_model(prompt, demo_feedback, mentor_id, content_type=kind)
+        provider = current_provider()
+        try:
+            record_feedback_performance(
+                provider=provider,
+                file_bytes=len(uploaded_bytes),
+                extracted_chars=len(content),
+                elapsed_seconds=time.perf_counter() - request_started_at,
+            )
+        except OSError as exc:
+            app.logger.warning("Could not save model timing calibration: %s", exc)
         output_html = render_markdown_html(output)
         if wants_json():
             return jsonify(
@@ -2164,6 +2298,7 @@ def feedback():
                     "model_provider": current_provider(),
                     "provider_label": provider_status_label(),
                     "working_label": working_label(),
+                    "feedback_timing": feedback_timing_profile(),
                 }
             )
         return render_home(

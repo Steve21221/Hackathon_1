@@ -80,6 +80,9 @@ input::file-selector-button { border:0; padding:6px 8px; margin-right:8px; borde
 .feedback-file-selection .selected-file-name { flex:1; min-width:0; }
 .active-upload .feedback-file-remove { flex:none; display:block; border:1px solid #dfc9bf; border-radius:8px; padding:6px 9px; color:#914b3b; background:#fff8f4; font-size:10px; }
 .active-upload .feedback-file-remove:hover { color:#fff; background:#a95643; }
+.feedback-time-estimate { display:grid; gap:3px; margin:0; padding:10px 12px; border-radius:10px; background:#eef3ec; color:#58655b; font-size:11px; line-height:1.4; }
+.feedback-time-estimate strong { color:var(--green); font-size:11px; }
+.feedback-time-estimate span { display:block; }
 .choose-prompt { min-height:130px; margin-top:18px; border:1px dashed #b9bdb7; border-radius:16px; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#7c847e; background:rgba(255,253,248,.4); }
 .choose-prompt span { color:var(--green); font-size:22px; }
 .choose-prompt p { margin:7px 0 0; font-size:12px; }

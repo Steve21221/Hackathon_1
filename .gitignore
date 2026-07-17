@@ -47,6 +47,7 @@ next-env.d.ts
 /mentor_files/
 /work/
 /user_settings.json
+/model_performance.json
 
 # Local mentor source documents may contain private or unpublished material
 /Mentor_Data/Source_Documents/
