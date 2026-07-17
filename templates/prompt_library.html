@@ -8,7 +8,7 @@
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='promptly-icon.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body data-working-label="{{ working_label }}" data-provider-label="{{ provider_label }}">
+<body data-working-label="{{ working_label }}" data-provider-label="{{ provider_label }}"{% if promptly_lifecycle_base %} data-promptly-lifecycle-base="{{ promptly_lifecycle_base }}"{% endif %}>
   <main>
     <nav class="nav" aria-label="Main navigation">
       <a class="brand" href="{{ url_for('home') }}" aria-label="Promptly home"><span class="brand-mark">P</span><span>Promptly</span></a>

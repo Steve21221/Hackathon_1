@@ -1,4 +1,57 @@
 ﻿(function () {
+  function startPromptlyLifecycle() {
+    var baseUrl = document.body.getAttribute('data-promptly-lifecycle-base');
+    if (!baseUrl) return;
+
+    var randomPart = (window.crypto && typeof window.crypto.randomUUID === 'function')
+      ? window.crypto.randomUUID().replace(/-/g, '')
+      : Math.random().toString(36).slice(2) + Date.now().toString(36);
+    var clientId = 'tab_' + randomPart;
+    var sequence = 0;
+    var stopped = false;
+
+    function eventUrl(eventName) {
+      sequence += 1;
+      return baseUrl + '/' + eventName + '/' + encodeURIComponent(clientId) + '/' + sequence;
+    }
+
+    function heartbeat() {
+      if (stopped) return;
+      fetch(eventUrl('heartbeat'), {
+        method: 'POST',
+        keepalive: true,
+        cache: 'no-store'
+      }).catch(function () {
+        // A failed heartbeat simply means the local service is already stopping.
+      });
+    }
+
+    heartbeat();
+    var heartbeatTimer = window.setInterval(heartbeat, 10000);
+    function signalClose() {
+      if (stopped) return;
+      stopped = true;
+      window.clearInterval(heartbeatTimer);
+      var closeUrl = eventUrl('close');
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(closeUrl);
+      } else {
+        fetch(closeUrl, { method: 'POST', keepalive: true }).catch(function () {});
+      }
+    }
+
+    window.addEventListener('pagehide', signalClose);
+    window.addEventListener('beforeunload', signalClose);
+    window.addEventListener('pageshow', function (event) {
+      if (!event.persisted || !stopped) return;
+      stopped = false;
+      heartbeat();
+      heartbeatTimer = window.setInterval(heartbeat, 10000);
+    });
+  }
+
+  startPromptlyLifecycle();
+
   var feedbackTiming = { state: 'calibrating', model: 'selected model', sample_count: 0 };
   var timingData = document.getElementById('feedback-timing-data');
   if (timingData) {

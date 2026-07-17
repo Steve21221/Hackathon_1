@@ -89,6 +89,53 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertIn("renderCitedLiterature", script)
         self.assertIn("data-cited-literature-list", script)
         self.assertNotIn("data-web-source-urls", script)
+        self.assertIn("startPromptlyLifecycle", script)
+        self.assertIn("navigator.sendBeacon", script)
+        self.assertIn("pagehide", script)
+        self.assertIn("beforeunload", script)
+        self.assertIn("pageshow", script)
+
+    def test_installed_launcher_can_report_browser_tab_lifecycle(self):
+        events = []
+        with patch.dict(
+            app.config,
+            {
+                "PROMPTLY_LIFECYCLE_TOKEN": "test-token",
+                "PROMPTLY_LIFECYCLE_HANDLER": lambda *event: events.append(event),
+            },
+        ):
+            page = self.client.get("/")
+            heartbeat = self.client.post(
+                "/api/client/test-token/heartbeat/tab_12345678/1"
+            )
+            closed = self.client.post(
+                "/api/client/test-token/close/tab_12345678/2"
+            )
+
+        self.assertIn(
+            b'data-promptly-lifecycle-base="/api/client/test-token"',
+            page.data,
+        )
+        self.assertEqual(heartbeat.status_code, 204)
+        self.assertEqual(closed.status_code, 204)
+        self.assertEqual(
+            events,
+            [("heartbeat", "tab_12345678", 1), ("close", "tab_12345678", 2)],
+        )
+
+    def test_browser_lifecycle_endpoint_is_disabled_for_normal_flask_runs(self):
+        with patch.dict(
+            app.config,
+            {
+                "PROMPTLY_LIFECYCLE_TOKEN": "",
+                "PROMPTLY_LIFECYCLE_HANDLER": None,
+            },
+        ):
+            response = self.client.post(
+                "/api/client/test-token/heartbeat/tab_12345678/1"
+            )
+
+        self.assertEqual(response.status_code, 404)
 
     def test_feedback_timing_calibrates_separately_for_each_model(self):
         os.environ["MODEL_PROVIDER"] = "ollama"

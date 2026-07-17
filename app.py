@@ -2255,6 +2255,10 @@ def render_home(**context: Any):
     )
     if defaults.get("output") and not defaults.get("output_html"):
         defaults["output_html"] = render_markdown_html(str(defaults["output"]))
+    lifecycle_token = str(app.config.get("PROMPTLY_LIFECYCLE_TOKEN", ""))
+    defaults["promptly_lifecycle_base"] = (
+        f"/api/client/{quote(lifecycle_token, safe='')}" if lifecycle_token else ""
+    )
     return render_template(
         "index.html",
         upload_types=UPLOAD_TYPES,
@@ -2271,6 +2275,10 @@ def render_prompt_library(**context: Any):
     defaults = prompt_library_context(
         default_clean_endpoint="prompt_library",
         **context,
+    )
+    lifecycle_token = str(app.config.get("PROMPTLY_LIFECYCLE_TOKEN", ""))
+    defaults["promptly_lifecycle_base"] = (
+        f"/api/client/{quote(lifecycle_token, safe='')}" if lifecycle_token else ""
     )
     return render_template(
         "prompt_library.html",
@@ -2548,6 +2556,21 @@ def library_state(slug: str):
 @app.get("/api/settings")
 def get_settings():
     return jsonify(public_settings())
+
+
+@app.post("/api/client/<token>/<event>/<client_id>/<int:sequence>")
+def client_lifecycle(token: str, event: str, client_id: str, sequence: int):
+    """Receive tab lifecycle signals from the installed desktop launcher."""
+    expected_token = str(app.config.get("PROMPTLY_LIFECYCLE_TOKEN", ""))
+    handler = app.config.get("PROMPTLY_LIFECYCLE_HANDLER")
+    if not expected_token or token != expected_token or not callable(handler):
+        abort(404)
+    if event not in {"heartbeat", "close"}:
+        abort(404)
+    if not re.fullmatch(r"[A-Za-z0-9_-]{8,128}", client_id):
+        abort(400)
+    handler(event, client_id, sequence)
+    return Response(status=204)
 
 
 @app.post("/api/settings")

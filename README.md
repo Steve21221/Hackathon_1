@@ -105,6 +105,8 @@ The published setup downloads the `main` branch. Contributors testing a pull-req
 powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Downloads\Hackathon_1-main\installer\Promptly-Setup.ps1" -RepositoryBranch "codex/separate-review-style"
 ```
 
+When Promptly is opened from its desktop shortcut, closing the final Promptly browser tab stops its private local Python service automatically after a short delay. Refreshing the page or moving between the feedback and prompt-library pages does not stop the service. You can still press `Ctrl+C` in the Promptly terminal window to stop it immediately.
+
 ### Uninstall Promptly without removing Ollama
 
 Use [`installer/Promptly-Uninstall.ps1`](installer/Promptly-Uninstall.ps1) to remove only the Promptly website. Close Promptly, download the uninstaller, and run:

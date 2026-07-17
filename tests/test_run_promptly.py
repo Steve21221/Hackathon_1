@@ -24,6 +24,51 @@ class RunPromptlyTestCase(unittest.TestCase):
 
         self.assertEqual(selected_port, occupied_port + 1)
 
+    def test_monitor_shuts_down_after_last_tab_closes(self):
+        shutdown_calls = []
+        monitor = run_promptly.BrowserSessionMonitor(
+            lambda: shutdown_calls.append("shutdown"),
+            close_grace_seconds=3,
+            heartbeat_timeout_seconds=90,
+        )
+
+        monitor.notify("heartbeat", "tab_one", 1, now=10)
+        monitor.notify("close", "tab_one", 2, now=12)
+
+        self.assertFalse(monitor.check(now=14.9))
+        self.assertTrue(monitor.check(now=15))
+        self.assertEqual(shutdown_calls, ["shutdown"])
+        self.assertFalse(monitor.check(now=20))
+
+    def test_monitor_keeps_running_when_navigation_opens_a_new_page(self):
+        shutdown_calls = []
+        monitor = run_promptly.BrowserSessionMonitor(
+            lambda: shutdown_calls.append("shutdown"),
+            close_grace_seconds=3,
+            heartbeat_timeout_seconds=90,
+        )
+
+        monitor.notify("heartbeat", "old_page", 1, now=10)
+        monitor.notify("close", "old_page", 2, now=11)
+        monitor.notify("heartbeat", "new_page", 1, now=12)
+
+        self.assertFalse(monitor.check(now=20))
+        self.assertEqual(shutdown_calls, [])
+
+    def test_monitor_ignores_out_of_order_heartbeat_after_close(self):
+        shutdown_calls = []
+        monitor = run_promptly.BrowserSessionMonitor(
+            lambda: shutdown_calls.append("shutdown"),
+            close_grace_seconds=1,
+            heartbeat_timeout_seconds=90,
+        )
+
+        monitor.notify("close", "tab_race", 2, now=10)
+        monitor.notify("heartbeat", "tab_race", 1, now=10.1)
+
+        self.assertTrue(monitor.check(now=11))
+        self.assertEqual(shutdown_calls, ["shutdown"])
+
 
 if __name__ == "__main__":
     unittest.main()
