@@ -11,13 +11,15 @@ from app import (
     app,
     build_feedback_prompt,
     call_model,
+    derive_literature_query,
     extract_generated_prompt,
-    fetch_web_source,
     feedback_timing_profile,
     load_mentor_prompt,
-    normalize_public_web_url,
     record_feedback_performance,
     render_markdown_html,
+    search_academic_literature,
+    search_crossref_literature,
+    search_pubmed_literature,
     split_review_text,
 )
 from docx import Document
@@ -66,8 +68,8 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertEqual(response.data.count(b"data-feedback-file-input"), 3)
         self.assertEqual(response.data.count(b"data-feedback-file-selection"), 3)
         self.assertEqual(response.data.count(b"data-remove-feedback-file"), 3)
-        self.assertEqual(response.data.count(b"data-web-research-toggle"), 3)
-        self.assertEqual(response.data.count(b"data-web-source-urls"), 3)
+        self.assertEqual(response.data.count(b"data-literature-search-toggle"), 3)
+        self.assertNotIn(b"web_source_urls", response.data)
 
     def test_upload_script_supports_removing_pending_files(self):
         script = (Path("static") / "library_uploads.js").read_text(encoding="utf-8")
@@ -82,8 +84,7 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertIn("Calibrating\\u2026", script)
         self.assertIn("Estimated response time:", script)
         self.assertIn("feedback_timing", Path("app.py").read_text(encoding="utf-8"))
-        self.assertIn("data-web-research-toggle", script)
-        self.assertIn("urls.required = enabled", script)
+        self.assertNotIn("data-web-source-urls", script)
 
     def test_feedback_timing_calibrates_separately_for_each_model(self):
         os.environ["MODEL_PROVIDER"] = "ollama"
@@ -664,136 +665,178 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertIn("<h2>", payload["output_html"])
         self.assertIn("idea.txt", payload["filename"])
 
-    @patch("app.call_model", return_value="Feedback with [Source 1](https://example.com/research)")
-    @patch("app.load_web_sources")
-    def test_feedback_with_web_sources_adds_citation_context(self, mock_load_sources, mock_model):
-        mock_load_sources.return_value = [
-            {
-                "title": "Research reference",
-                "url": "https://example.com/research",
-                "text": "A relevant public research summary.",
-            }
-        ]
+    @patch("app.call_model", return_value="Feedback with [Source 1](https://doi.org/10.1000/test)")
+    @patch("app.search_academic_literature")
+    def test_feedback_automatically_searches_literature_and_adds_citations(self, mock_search, mock_model):
+        mock_search.return_value = (
+            "nanomesh wearable sensor",
+            [
+                {
+                    "title": "Research reference",
+                    "url": "https://doi.org/10.1000/test",
+                    "text": "Abstract: A relevant peer-reviewed research summary.",
+                    "database": "Crossref",
+                    "doi": "10.1000/test",
+                }
+            ],
+        )
 
         response = self.client.post(
             "/feedback",
             data={
                 "content_type": "research-ideas",
                 "mentor_id": "dr-nanshu-lu",
-                "use_web_sources": "1",
-                "web_source_urls": "https://example.com/research",
-                "file": (BytesIO(b"An early research idea."), "idea.txt"),
+                "focus": "wearable validation",
+                "use_literature_search": "1",
+                "file": (BytesIO(b"Nanomesh sensor for wearable monitoring"), "idea.txt"),
             },
             content_type="multipart/form-data",
             headers={"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"},
         )
 
         self.assertEqual(response.status_code, 200)
-        mock_load_sources.assert_called_once_with("https://example.com/research")
+        mock_search.assert_called_once_with(
+            "Nanomesh sensor for wearable monitoring",
+            "wearable validation",
+        )
         prompt = mock_model.call_args.args[0]
         self.assertIn("untrusted reference content", prompt)
         self.assertIn("[Source 1] Research reference", prompt)
-        self.assertIn("[Source 1](https://example.com/research)", prompt)
-        self.assertIn("https://example.com/research", prompt)
+        self.assertIn("[Source 1](https://doi.org/10.1000/test)", prompt)
+        self.assertIn("A title or bibliographic record alone is not evidence", prompt)
         self.assertEqual(
-            response.get_json()["web_sources"],
-            [{"title": "Research reference", "url": "https://example.com/research"}],
+            response.get_json()["literature_sources"],
+            [
+                {
+                    "title": "Research reference",
+                    "url": "https://doi.org/10.1000/test",
+                    "database": "Crossref",
+                }
+            ],
         )
+        self.assertEqual(response.get_json()["literature_query"], "nanomesh wearable sensor")
 
-    @patch("app.load_web_sources")
-    def test_feedback_does_not_fetch_urls_without_opt_in(self, mock_load_sources):
+    @patch("app.search_academic_literature")
+    def test_feedback_does_not_search_literature_without_opt_in(self, mock_search):
         response = self.client.post(
             "/feedback",
             data={
                 "content_type": "research-ideas",
                 "mentor_id": "dr-nanshu-lu",
-                "web_source_urls": "https://example.com/ignored",
                 "file": (BytesIO(b"An early research idea."), "idea.txt"),
             },
             content_type="multipart/form-data",
         )
 
         self.assertEqual(response.status_code, 200)
-        mock_load_sources.assert_not_called()
+        mock_search.assert_not_called()
 
-    def test_feedback_requires_url_when_web_sources_are_enabled(self):
-        response = self.client.post(
-            "/feedback",
-            data={
-                "content_type": "research-ideas",
-                "mentor_id": "dr-nanshu-lu",
-                "use_web_sources": "1",
-                "file": (BytesIO(b"An early research idea."), "idea.txt"),
+    def test_literature_query_uses_document_title_and_specific_terms(self):
+        query = derive_literature_query(
+            "Stretchable nanomesh sensor for continuous cardiac monitoring\n"
+            "We evaluate conformal electrodes, motion artifacts, and wearable signal quality.",
+            "clinical validation",
+        )
+        self.assertIn("Stretchable nanomesh sensor", query)
+        self.assertIn("cardiac", query)
+        self.assertLessEqual(len(query), 350)
+
+    @patch("app.requests.get")
+    def test_crossref_search_returns_doi_metadata_and_abstract(self, mock_get):
+        response = Mock()
+        response.json.return_value = {
+            "message": {
+                "items": [
+                    {
+                        "title": ["Retracted wearable sensor result"],
+                        "DOI": "10.1000/retracted",
+                        "update-to": [{"type": "retraction"}],
+                    },
+                    {
+                        "title": ["Stretchable bioelectronic interfaces"],
+                        "DOI": "10.1000/test",
+                        "author": [{"given": "Ada", "family": "Lovelace"}],
+                        "container-title": ["Journal of Wearable Systems"],
+                        "published": {"date-parts": [[2025, 4, 1]]},
+                        "abstract": "<jats:p>Conformal electrodes reduced motion artifacts.</jats:p>",
+                    }
+                ]
+            }
+        }
+        mock_get.return_value = response
+
+        sources = search_crossref_literature("stretchable wearable sensor", limit=3)
+
+        self.assertEqual(len(sources), 1)
+        self.assertEqual(sources[0]["database"], "Crossref")
+        self.assertEqual(sources[0]["url"], "https://doi.org/10.1000/test")
+        self.assertIn("Conformal electrodes reduced motion artifacts", sources[0]["text"])
+        self.assertEqual(mock_get.call_args.args[0], "https://api.crossref.org/works")
+        self.assertEqual(mock_get.call_args.kwargs["params"]["filter"], "type:journal-article")
+
+    @patch("app.requests.get")
+    def test_pubmed_search_returns_article_abstract_and_citation(self, mock_get):
+        search_response = Mock()
+        search_response.json.return_value = {"esearchresult": {"idlist": ["12345"]}}
+        fetch_response = Mock()
+        fetch_response.content = b"""<?xml version="1.0"?>
+        <PubmedArticleSet><PubmedArticle><MedlineCitation>
+          <PMID>12345</PMID><Article><ArticleTitle>Wearable cardiac sensor validation</ArticleTitle>
+          <Abstract><AbstractText Label="RESULTS">Signal quality improved during motion.</AbstractText></Abstract>
+          <AuthorList><Author><LastName>Ng</LastName><Initials>A</Initials></Author></AuthorList>
+          <Journal><JournalIssue><PubDate><Year>2024</Year></PubDate></JournalIssue><Title>Biomedical Sensors</Title></Journal>
+          </Article></MedlineCitation><PubmedData><ArticleIdList>
+          <ArticleId IdType="doi">10.2000/pubmed</ArticleId>
+          </ArticleIdList></PubmedData></PubmedArticle>
+          <PubmedArticle><MedlineCitation><PMID>54321</PMID><Article>
+          <ArticleTitle>Retracted sensor paper</ArticleTitle>
+          <PublicationTypeList><PublicationType>Retracted Publication</PublicationType></PublicationTypeList>
+          </Article></MedlineCitation></PubmedArticle>
+          </PubmedArticleSet>"""
+        mock_get.side_effect = [search_response, fetch_response]
+
+        sources = search_pubmed_literature("wearable cardiac sensor", limit=3)
+
+        self.assertEqual(len(sources), 1)
+        self.assertEqual(sources[0]["database"], "PubMed")
+        self.assertEqual(sources[0]["url"], "https://doi.org/10.2000/pubmed")
+        self.assertIn("RESULTS: Signal quality improved during motion", sources[0]["text"])
+        self.assertEqual(mock_get.call_count, 2)
+
+    @patch("app.search_pubmed_literature")
+    @patch("app.search_crossref_literature")
+    def test_academic_search_deduplicates_the_same_doi(self, mock_crossref, mock_pubmed):
+        shared = {
+            "title": "Shared paper",
+            "url": "https://doi.org/10.1000/shared",
+            "text": "Abstract: Shared evidence.",
+            "doi": "10.1000/shared",
+        }
+        mock_crossref.return_value = [{**shared, "database": "Crossref"}]
+        mock_pubmed.return_value = [
+            {**shared, "database": "PubMed"},
+            {
+                "title": "Second paper",
+                "url": "https://pubmed.ncbi.nlm.nih.gov/22/",
+                "text": "Abstract: Additional evidence.",
+                "database": "PubMed",
+                "doi": "",
             },
-            content_type="multipart/form-data",
-        )
-
-        self.assertEqual(response.status_code, 400)
-        self.assertIn(b"Add at least one public URL", response.data)
-
-    def test_web_source_url_validation_blocks_private_targets_and_credentials(self):
-        blocked_urls = (
-            "http://127.0.0.1/private",
-            "http://localhost/private",
-            "http://192.168.1.10/private",
-            "https://user:password@example.com/private",
-            "https://example.com:11434/private",
-        )
-        for source_url in blocked_urls:
-            with self.subTest(source_url=source_url):
-                with self.assertRaises(ValueError):
-                    normalize_public_web_url(source_url)
-
-    @patch("app.socket.getaddrinfo")
-    def test_web_source_url_validation_accepts_public_https(self, mock_getaddrinfo):
-        mock_getaddrinfo.return_value = [
-            (2, 1, 6, "", ("93.184.216.34", 443)),
         ]
 
-        normalized = normalize_public_web_url("https://Example.com/research#results")
+        _query, sources = search_academic_literature(
+            "Stretchable cardiac sensor validation with motion artifact reduction"
+        )
 
-        self.assertEqual(normalized, "https://example.com/research")
+        self.assertEqual([source["title"] for source in sources], ["Shared paper", "Second paper"])
 
-    @patch("app.socket.getaddrinfo")
-    @patch("app.requests.Session")
-    def test_web_source_fetch_extracts_visible_html_only(self, mock_session_class, mock_getaddrinfo):
-        mock_getaddrinfo.return_value = [(2, 1, 6, "", ("93.184.216.34", 443))]
-        response = Mock()
-        response.status_code = 200
-        response.headers = {"Content-Type": "text/html; charset=utf-8"}
-        response.iter_content.return_value = [
-            b"<html><head><title>Useful study</title><script>ignore me</script></head>",
-            b"<body><h1>Finding</h1><p>Visible evidence.</p></body></html>",
-        ]
-        session = mock_session_class.return_value
-        session.get.return_value = response
-
-        source = fetch_web_source("https://example.com/research")
-
-        self.assertEqual(source["title"], "Useful study")
-        self.assertIn("Visible evidence.", source["text"])
-        self.assertNotIn("ignore me", source["text"])
-        self.assertFalse(session.trust_env)
-        session.get.assert_called_once()
-        response.close.assert_called_once()
-        session.close.assert_called_once()
-
-    @patch("app.socket.getaddrinfo")
-    @patch("app.requests.Session")
-    def test_web_source_fetch_blocks_redirect_to_private_network(self, mock_session_class, mock_getaddrinfo):
-        mock_getaddrinfo.return_value = [(2, 1, 6, "", ("93.184.216.34", 443))]
-        response = Mock()
-        response.status_code = 302
-        response.headers = {"Location": "http://127.0.0.1/admin"}
-        session = mock_session_class.return_value
-        session.get.return_value = response
-
-        with self.assertRaisesRegex(ValueError, "Local and private"):
-            fetch_web_source("https://example.com/redirect")
-
-        session.get.assert_called_once()
-        response.close.assert_called_once()
-        session.close.assert_called_once()
+    @patch("app.search_pubmed_literature", side_effect=ValueError("offline"))
+    @patch("app.search_crossref_literature", side_effect=ValueError("offline"))
+    def test_academic_search_reports_when_both_indexes_are_unavailable(self, _crossref, _pubmed):
+        with self.assertRaisesRegex(ValueError, "could not reach Crossref or PubMed"):
+            search_academic_literature(
+                "Stretchable cardiac sensor validation with motion artifact reduction"
+            )
 
     def test_settings_api_saves_provider_choice(self):
         response = self.client.post(

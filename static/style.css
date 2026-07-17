@@ -74,17 +74,12 @@ input::file-selector-button { border:0; padding:6px 8px; margin-right:8px; borde
 .focus-label { color:#677169; font-size:10px; text-transform:uppercase; letter-spacing:.06em; font-weight:700; }
 .focus-label input { display:block; width:100%; margin-top:7px; border:1px solid var(--line); border-radius:9px; padding:10px 11px; background:white; color:var(--ink); font-size:12px; text-transform:none; letter-spacing:0; outline:none; }
 .focus-label input:focus { border-color:var(--accent); }
-.web-research-option { border:1px solid var(--line); border-radius:11px; background:#faf8f2; overflow:hidden; }
-.web-research-toggle { display:flex; align-items:center; gap:10px; padding:11px 12px; cursor:pointer; }
-.web-research-toggle input { width:16px; height:16px; margin:0; accent-color:var(--accent); }
-.web-research-toggle span,.web-research-toggle strong,.web-research-toggle small { display:block; }
-.web-research-toggle strong { color:var(--ink); font-size:11px; }
-.web-research-toggle small { margin-top:2px; color:var(--muted); font-size:10px; font-weight:400; line-height:1.35; }
-.web-research-fields { padding:0 12px 12px; border-top:1px solid #e6e2d8; }
-.web-research-fields label { display:block; padding-top:10px; color:#677169; font-size:9px; text-transform:uppercase; letter-spacing:.06em; font-weight:700; }
-.web-research-fields textarea { display:block; width:100%; min-height:74px; margin-top:7px; padding:9px 10px; resize:vertical; border:1px solid var(--line); border-radius:8px; outline:none; background:#fff; color:var(--ink); font:400 11px/1.45 Arial,sans-serif; text-transform:none; letter-spacing:0; }
-.web-research-fields textarea:focus { border-color:var(--accent); }
-.web-research-fields p { margin:7px 0 0; color:var(--muted); font-size:9px; line-height:1.4; }
+.literature-search-option { border:1px solid var(--line); border-radius:11px; background:#faf8f2; overflow:hidden; }
+.literature-search-toggle { display:flex; align-items:center; gap:10px; padding:11px 12px; cursor:pointer; }
+.literature-search-toggle input { width:16px; height:16px; margin:0; accent-color:var(--accent); }
+.literature-search-toggle span,.literature-search-toggle strong,.literature-search-toggle small { display:block; }
+.literature-search-toggle strong { color:var(--ink); font-size:11px; }
+.literature-search-toggle small { margin-top:2px; color:var(--muted); font-size:10px; font-weight:400; line-height:1.35; }
 .active-upload button { border:0; border-radius:10px; padding:12px 13px; background:var(--ink); color:white; display:flex; justify-content:space-between; cursor:pointer; font-size:12px; font-weight:700; }
 .active-upload button:hover { background:var(--accent); }
 .feedback-file-selection { display:flex; align-items:center; justify-content:space-between; gap:10px; min-width:0; padding:9px 10px; border:1px solid var(--line); border-radius:10px; background:#f7f4ed; }
