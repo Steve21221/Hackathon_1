@@ -182,11 +182,14 @@ def current_provider() -> str:
 def provider_status_label(provider: str | None = None) -> str:
     value = (provider or current_provider()).strip().lower()
     if value == "ollama":
-        return "local Ollama"
+        return os.getenv("OLLAMA_MODEL", "qwen3.5:9b").strip() or "qwen3.5:9b"
     if value == "openai":
-        return "OpenAI"
+        return os.getenv("OPENAI_MODEL", "gpt-5-mini").strip() or "gpt-5-mini"
     if value in {"claude", "anthropic"}:
-        return "Claude"
+        return (
+            os.getenv("CLAUDE_MODEL", "claude-sonnet-4-5").strip()
+            or "claude-sonnet-4-5"
+        )
     return "demo mode"
 
 

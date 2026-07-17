@@ -14,7 +14,7 @@
       <div class="nav-actions">
         <a class="nav-link nav-link-boxed" href="{{ url_for('home') }}"><span>&larr;</span> Feedback workspace</a>
         <button class="nav-link nav-link-boxed settings-trigger" type="button" data-open-settings>Model settings</button>
-        <span class="status" data-provider-status><i></i><span data-provider-status-text>{% if model_provider == 'ollama' %}Local Qwen extraction{% elif model_provider == 'openai' %}OpenAI extraction{% elif model_provider in ['claude', 'anthropic'] %}Claude extraction{% else %}Local extraction{% endif %}</span></span>
+        <span class="status" data-provider-status><i></i><span data-provider-status-text>{{ provider_label }}</span></span>
       </div>
     </nav>
 

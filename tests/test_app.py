@@ -643,9 +643,13 @@ class PromptlyTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()["settings"]["OLLAMA_MODEL"], "phi4-mini")
+        self.assertEqual(response.get_json()["provider_label"], "phi4-mini")
         self.assertEqual(self.client.get("/api/settings").get_json()["OLLAMA_MODEL"], "phi4-mini")
         home = self.client.get("/")
         self.assertIn(b'<option value="phi4-mini" selected>', home.data)
+        self.assertIn(b'<span data-provider-status-text>phi4-mini</span>', home.data)
+        prompt_library = self.client.get("/prompt-library")
+        self.assertIn(b'<span data-provider-status-text>phi4-mini</span>', prompt_library.data)
 
     def test_installer_selects_qwen_then_optionally_adds_phi(self):
         installer = (Path("installer") / "Promptly-Setup.ps1").read_text(encoding="utf-8")
