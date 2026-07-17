@@ -355,6 +355,20 @@
       updateFeedbackFile(input);
     });
 
+    document.querySelectorAll('[data-web-research-toggle]').forEach(function (toggle) {
+      var form = toggle.closest('form');
+      var fields = form && form.querySelector('[data-web-research-fields]');
+      var urls = fields && fields.querySelector('[data-web-source-urls]');
+      function syncWebResearchFields() {
+        var enabled = Boolean(toggle.checked);
+        if (fields) fields.hidden = !enabled;
+        if (urls) urls.required = enabled;
+        toggle.setAttribute('aria-expanded', enabled ? 'true' : 'false');
+      }
+      toggle.addEventListener('change', syncWebResearchFields);
+      syncWebResearchFields();
+    });
+
     function selectedMentorValue(form) {
       var radio = form && form.querySelector('input[name="selected_prompt_mentor"]:checked');
       return radio ? radio.value : '';

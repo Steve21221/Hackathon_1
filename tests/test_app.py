@@ -12,8 +12,10 @@ from app import (
     build_feedback_prompt,
     call_model,
     extract_generated_prompt,
+    fetch_web_source,
     feedback_timing_profile,
     load_mentor_prompt,
+    normalize_public_web_url,
     record_feedback_performance,
     render_markdown_html,
     split_review_text,
@@ -64,6 +66,8 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertEqual(response.data.count(b"data-feedback-file-input"), 3)
         self.assertEqual(response.data.count(b"data-feedback-file-selection"), 3)
         self.assertEqual(response.data.count(b"data-remove-feedback-file"), 3)
+        self.assertEqual(response.data.count(b"data-web-research-toggle"), 3)
+        self.assertEqual(response.data.count(b"data-web-source-urls"), 3)
 
     def test_upload_script_supports_removing_pending_files(self):
         script = (Path("static") / "library_uploads.js").read_text(encoding="utf-8")
@@ -78,6 +82,8 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertIn("Calibrating\\u2026", script)
         self.assertIn("Estimated response time:", script)
         self.assertIn("feedback_timing", Path("app.py").read_text(encoding="utf-8"))
+        self.assertIn("data-web-research-toggle", script)
+        self.assertIn("urls.required = enabled", script)
 
     def test_feedback_timing_calibrates_separately_for_each_model(self):
         os.environ["MODEL_PROVIDER"] = "ollama"
@@ -657,6 +663,137 @@ class PromptlyTestCase(unittest.TestCase):
         self.assertIn("output_html", payload)
         self.assertIn("<h2>", payload["output_html"])
         self.assertIn("idea.txt", payload["filename"])
+
+    @patch("app.call_model", return_value="Feedback with [Source 1](https://example.com/research)")
+    @patch("app.load_web_sources")
+    def test_feedback_with_web_sources_adds_citation_context(self, mock_load_sources, mock_model):
+        mock_load_sources.return_value = [
+            {
+                "title": "Research reference",
+                "url": "https://example.com/research",
+                "text": "A relevant public research summary.",
+            }
+        ]
+
+        response = self.client.post(
+            "/feedback",
+            data={
+                "content_type": "research-ideas",
+                "mentor_id": "dr-nanshu-lu",
+                "use_web_sources": "1",
+                "web_source_urls": "https://example.com/research",
+                "file": (BytesIO(b"An early research idea."), "idea.txt"),
+            },
+            content_type="multipart/form-data",
+            headers={"X-Requested-With": "XMLHttpRequest", "Accept": "application/json"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        mock_load_sources.assert_called_once_with("https://example.com/research")
+        prompt = mock_model.call_args.args[0]
+        self.assertIn("untrusted reference content", prompt)
+        self.assertIn("[Source 1] Research reference", prompt)
+        self.assertIn("[Source 1](https://example.com/research)", prompt)
+        self.assertIn("https://example.com/research", prompt)
+        self.assertEqual(
+            response.get_json()["web_sources"],
+            [{"title": "Research reference", "url": "https://example.com/research"}],
+        )
+
+    @patch("app.load_web_sources")
+    def test_feedback_does_not_fetch_urls_without_opt_in(self, mock_load_sources):
+        response = self.client.post(
+            "/feedback",
+            data={
+                "content_type": "research-ideas",
+                "mentor_id": "dr-nanshu-lu",
+                "web_source_urls": "https://example.com/ignored",
+                "file": (BytesIO(b"An early research idea."), "idea.txt"),
+            },
+            content_type="multipart/form-data",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        mock_load_sources.assert_not_called()
+
+    def test_feedback_requires_url_when_web_sources_are_enabled(self):
+        response = self.client.post(
+            "/feedback",
+            data={
+                "content_type": "research-ideas",
+                "mentor_id": "dr-nanshu-lu",
+                "use_web_sources": "1",
+                "file": (BytesIO(b"An early research idea."), "idea.txt"),
+            },
+            content_type="multipart/form-data",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(b"Add at least one public URL", response.data)
+
+    def test_web_source_url_validation_blocks_private_targets_and_credentials(self):
+        blocked_urls = (
+            "http://127.0.0.1/private",
+            "http://localhost/private",
+            "http://192.168.1.10/private",
+            "https://user:password@example.com/private",
+            "https://example.com:11434/private",
+        )
+        for source_url in blocked_urls:
+            with self.subTest(source_url=source_url):
+                with self.assertRaises(ValueError):
+                    normalize_public_web_url(source_url)
+
+    @patch("app.socket.getaddrinfo")
+    def test_web_source_url_validation_accepts_public_https(self, mock_getaddrinfo):
+        mock_getaddrinfo.return_value = [
+            (2, 1, 6, "", ("93.184.216.34", 443)),
+        ]
+
+        normalized = normalize_public_web_url("https://Example.com/research#results")
+
+        self.assertEqual(normalized, "https://example.com/research")
+
+    @patch("app.socket.getaddrinfo")
+    @patch("app.requests.Session")
+    def test_web_source_fetch_extracts_visible_html_only(self, mock_session_class, mock_getaddrinfo):
+        mock_getaddrinfo.return_value = [(2, 1, 6, "", ("93.184.216.34", 443))]
+        response = Mock()
+        response.status_code = 200
+        response.headers = {"Content-Type": "text/html; charset=utf-8"}
+        response.iter_content.return_value = [
+            b"<html><head><title>Useful study</title><script>ignore me</script></head>",
+            b"<body><h1>Finding</h1><p>Visible evidence.</p></body></html>",
+        ]
+        session = mock_session_class.return_value
+        session.get.return_value = response
+
+        source = fetch_web_source("https://example.com/research")
+
+        self.assertEqual(source["title"], "Useful study")
+        self.assertIn("Visible evidence.", source["text"])
+        self.assertNotIn("ignore me", source["text"])
+        self.assertFalse(session.trust_env)
+        session.get.assert_called_once()
+        response.close.assert_called_once()
+        session.close.assert_called_once()
+
+    @patch("app.socket.getaddrinfo")
+    @patch("app.requests.Session")
+    def test_web_source_fetch_blocks_redirect_to_private_network(self, mock_session_class, mock_getaddrinfo):
+        mock_getaddrinfo.return_value = [(2, 1, 6, "", ("93.184.216.34", 443))]
+        response = Mock()
+        response.status_code = 302
+        response.headers = {"Location": "http://127.0.0.1/admin"}
+        session = mock_session_class.return_value
+        session.get.return_value = response
+
+        with self.assertRaisesRegex(ValueError, "Local and private"):
+            fetch_web_source("https://example.com/redirect")
+
+        session.get.assert_called_once()
+        response.close.assert_called_once()
+        session.close.assert_called_once()
 
     def test_settings_api_saves_provider_choice(self):
         response = self.client.post(

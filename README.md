@@ -14,6 +14,14 @@ When local Ollama is selected, Promptly can extract up to approximately 120,000 
 
 Promptly calibrates response-time estimates separately for each selected model and computer. The first successful review displays **Calibrating...** while Promptly measures the request. Later file selections show an estimated response-time range based on that model's recent local history and the selected document size. Up to eight measurements per model are stored locally in `model_performance.json`; uploaded document contents are not stored in the timing history.
 
+## Optional web sources
+
+Feedback forms include an optional **Use web sources** control. When enabled, add up to three public HTML, plain-text, or PDF URLs, one per line. Promptly retrieves only the URLs supplied by the user, extracts readable text, and asks the selected model to support web-derived claims with clickable numbered citations. It does not give the model unrestricted browsing or allow it to choose arbitrary websites.
+
+For safety, Promptly blocks local and private-network addresses, credentials in URLs, nonstandard ports, unsafe redirect destinations, unsupported content types, and sources larger than 4 MB. Retrieved source text is treated as untrusted reference content and is bounded before being added to the review prompt.
+
+With local Ollama, the model and extracted document content remain local, but Promptly necessarily connects to each selected public website to retrieve its source text. With OpenAI or Claude selected, the extracted document and web-source text are also sent to that configured API provider. The URLs and retrieved source text are not saved by Promptly.
+
 ## Build a PI-style prompt library
 
 The feedback workspace is the homepage. Use the boxed **Modify a review style** link to open the separate `/prompt-library` workspace, where you can upload prior PI comments or examples in any of these groups:
